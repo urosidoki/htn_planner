@@ -253,6 +253,16 @@ generated debugger, SDK distribution and release guides. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow and
 [CHANGELOG.md](CHANGELOG.md) for release history.
 
+## Contributors
+
+The generated planner, compiler pipeline and public release are developed and
+maintained by [Jose Antonio Escribano](https://github.com/urosidoki). The shared
+2023 foundation retained in the core, parsing, world-state and integration layers
+was co-authored with [Sandra Alvarez](https://github.com/Sandruski).
+
+See [CONTRIBUTORS.md](CONTRIBUTORS.md) and [NOTICE.md](NOTICE.md) for contributor
+credits and formal copyright attribution.
+
 ## Third-party software
 
 - [SDL](https://www.libsdl.org)
