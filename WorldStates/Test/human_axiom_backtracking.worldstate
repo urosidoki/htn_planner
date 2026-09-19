@@ -1,0 +1,10 @@
+item "banana"
+item "orange"
+
+edible "banana"
+edible "orange"
+
+type "banana" "fruit"
+type "orange" "fruit"
+
+has_mold "banana"

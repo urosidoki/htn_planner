@@ -1,0 +1,73 @@
+HTN generated planner baseline benchmark
+  domain:            ComplexScenario
+  iterations/case:   20000
+  latency samples:   5000
+  allocation probes: 1000
+  max threads:       8
+  build:             Profile
+
+Baseline suite
+scenario      category                       plans/s     us/plan    p50 us    p95 us    p99 us    max us  alloc/plan   bytes/plan   failures
+Idle          Small / branch-light         638791.92       1.565     1.400     2.100     3.000     4.000      0.0000         0.00          0
+Combat        Branching                    412171.42       2.426     2.300     2.300     2.400    19.100      0.0000         0.00          0
+Emergency     Alternative branch           438653.25       2.280     2.300     2.400     2.800    20.900      0.0000         0.00          0
+Mobility      Callterm / movement          478984.55       2.088     1.900     2.900     3.400    42.900      0.0000         0.00          0
+Recovery      Conditions / recovery        511511.57       1.955     1.700     2.400     3.000     9.200      0.0000         0.00          0
+FactHeavy100  Fact-heavy / recursive         5936.63     168.446   147.100   179.900   266.300   392.400      0.0000         0.00          0
+
+Detailed category profiling is disabled in this configuration.
+Build HTNBenchmark with ProfileDetailed for runtime categories and structural counters.
+
+Allocation attribution (per plan, after warm-up)
+  reset = explicit HTNGeneratedRuntime_Reset before dispatch
+  execution = generated entry point, including its internal PrepareExecution/reset
+  Idle          reset=0.0000 alloc, 0.00 B  execution=0.0000 alloc, 0.00 B  failures=0
+  FactHeavy100  reset=0.0000 alloc, 0.00 B  execution=0.0000 alloc, 0.00 B  failures=0
+
+Allocation size histogram: Idle (1000 plans)
+  total: 0.0000 alloc/plan, 0.00 B/plan
+    size B         count      alloc/plan      bytes/plan      % allocs
+
+Allocation source attribution: Idle (1000 plans)
+  source tags are compiled only in ProfileDetailed; rebuild that configuration
+  to attribute the histogram without affecting normal Profile measurements.
+
+Allocation size histogram: FactHeavy100 (1000 plans)
+  total: 0.0000 alloc/plan, 0.00 B/plan
+    size B         count      alloc/plan      bytes/plan      % allocs
+
+Allocation source attribution: FactHeavy100 (1000 plans)
+  source tags are compiled only in ProfileDetailed; rebuild that configuration
+  to attribute the histogram without affecting normal Profile measurements.
+
+WorldState scaling (argument-index microbenchmark)
+  isolates HTNFactArgumentsTable index lookup/candidate traversal; setup is not timed
+  rows are (entity_id:int, group:int), group has 8 values
+     rows  query                  queries      ns/query    candidates/q       alloc/q       bytes/q
+       10  IndexedHit              100000         40.03            1.00        0.0000          0.00
+       10  IndexedMiss             100000         40.33            0.00        0.0000          0.00
+       10  LowSelectivity          100000         39.86            1.25        0.0000          0.00
+       10  FullScan                100000         29.83            1.25        0.0000          0.00
+      100  IndexedHit              100000         44.41            1.00        0.0000          0.00
+      100  IndexedMiss             100000         41.42            0.00        0.0000          0.00
+      100  LowSelectivity          100000         77.09           12.50        0.0000          0.00
+      100  FullScan                100000        250.35           12.50        0.0000          0.00
+     1000  IndexedHit              100000         47.21            1.00        0.0000          0.00
+     1000  IndexedMiss             100000         47.09            0.00        0.0000          0.00
+     1000  LowSelectivity           10000        399.51          125.00        0.0000          0.00
+     1000  FullScan                 10000       2424.17          125.00        0.0000          0.00
+    10000  IndexedHit              100000         55.52            1.00        0.0000          0.00
+    10000  IndexedMiss             100000         45.80            0.00        0.0000          0.00
+    10000  LowSelectivity            1000       4607.60         1250.00        0.0000          0.00
+    10000  FullScan                  1000      34992.80         1250.00        0.0000          0.00
+  note: 100,000 rows are intentionally deferred: current AddUniqueFactArguments setup
+        performs uniqueness checking during fixture construction; timing that setup would
+        obscure the read-path experiment. 10k rows are sufficient to detect lookup scaling.
+
+Parallel scaling: FactHeavy100 (independent WorldState + RuntimeState per worker)
+  1 thread(s): 6517.50 plans/s  speedup=1.00x  failures=0
+  2 thread(s): 12258.95 plans/s  speedup=1.88x  failures=0
+  4 thread(s): 17821.37 plans/s  speedup=2.73x  failures=0
+  8 thread(s): 26917.24 plans/s  speedup=4.13x  failures=0
+
+Baseline result: PASS  total_failures=0

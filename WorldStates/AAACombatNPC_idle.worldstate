@@ -1,0 +1,7 @@
+controlled_npc 1
+patrol_route 1 "north_loop"
+patrol_checkpoint 1 "checkpoint_alpha"
+health 1 100
+stamina 1 75
+ammo 1 20
+

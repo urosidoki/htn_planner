@@ -1,0 +1,12 @@
+(:include "Includes/DiagnosticBrokenInclude.domain")
+
+(:domain DiagnosticRootWithInclude top_level_domain
+    (:method (run ?inp_target) top_level_method
+        (branch_test
+            ()
+            (
+                (DiagnosticBrokenInclude::included_action ?inp_target)
+            )
+        )
+    )
+)

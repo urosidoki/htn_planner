@@ -1,0 +1,209 @@
+(:include "../Includes/combat_reactions.domain")
+
+(:domain ComplexScenario top_level_domain
+
+    (:method (run_scenario) top_level_method
+
+        // This branch is only enabled by world states that expose entity_count.
+        // Existing ComplexScenario world states do not contain that fact, so they
+        // continue to exercise the original single-entity path below.
+        (branch_iterate_all_entities
+            (and
+                (controlled_entity ?entity)
+                (entity_count ?num_entities)
+                (call binded_function_with_args "starting recursive complex HTN scenario")
+                (?health (call get_health ?entity))
+                (?max_speed (call get_max_speed ?entity))
+                (health_value ?entity ?health)
+                (speed_value ?entity ?max_speed)
+                (not (entity_disabled ?entity))
+            )
+            (
+                (!log "Recursive scenario started" ?entity ?health ?max_speed)
+                (iterate_over_entities 0 ?num_entities ?health ?max_speed)
+            )
+        )
+
+        (branch_active_entity
+            (and
+                (controlled_entity ?entity)
+                (call binded_function_with_args "starting complex HTN scenario")
+                (?health (call get_health ?entity))
+                (?max_speed (call get_max_speed ?entity))
+                (health_value ?entity ?health)
+                (speed_value ?entity ?max_speed)
+                (not (entity_disabled ?entity))
+            )
+            (
+                (!log "Scenario started" ?entity ?health ?max_speed)
+                (evaluate_situation ?entity ?health ?max_speed)
+            )
+        )
+
+        (branch_no_active_entity
+            (
+            )
+            (
+                (!log "No active entity")
+            )
+        )
+    )
+
+    (:method (iterate_over_entities ?inp_entity_index ?inp_num_entities ?inp_health ?inp_max_speed)
+
+        (branch_internal
+            (and
+                (call lt ?inp_entity_index ?inp_num_entities)
+                (entity ?inp_entity_index ?entity_id)
+            )
+            (
+                (evaluate_situation ?entity_id ?inp_health ?inp_max_speed)
+                (iterate_over_entities (call inc ?inp_entity_index) ?inp_num_entities ?inp_health ?inp_max_speed)
+            )
+        )
+
+        (branch_done
+            (
+            )
+            (
+                // All entities processed.
+            )
+        )
+    )
+
+    (:method (evaluate_situation ?inp_entity ?inp_health ?inp_max_speed)
+
+        (branch_emergency
+            (and
+                (#is_threat ?inp_entity ?enemy)
+                (critical_threat ?enemy)
+                (or
+                    (enemy_close ?enemy)
+                    (low_cover ?inp_entity)
+                )
+                (call binded_function_with_args "emergency branch selected")
+            )
+            (
+                (!log "Emergency response")
+                (emergency_response ?inp_entity ?enemy)
+            )
+        )
+
+        (branch_combat
+            (and
+                (#is_threat ?inp_entity ?enemy)
+                (#can_engage ?inp_entity ?enemy)
+                (call binded_function_with_args "combat branch selected")
+            )
+            (
+                (!log "Combat response")
+                (combat_response ?inp_entity ?enemy)
+            )
+        )
+
+        (branch_recovery
+            (and
+                (needs_healing ?inp_entity)
+                (not (under_fire ?inp_entity))
+                (or
+                    (medkit ?inp_entity)
+                    (healing_station_nearby ?inp_entity)
+                )
+            )
+            (
+                (!log "Recovery response")
+                (recovery_response ?inp_entity)
+            )
+        )
+
+        (branch_mobility
+            (and
+                (objective_far ?inp_entity)
+                (alt
+                    (path_open ?inp_entity)
+                    (alternate_path_open ?inp_entity)
+                )
+                (not (movement_blocked ?inp_entity))
+            )
+            (
+                (!log "Mobility response")
+                (mobility_response ?inp_entity ?inp_max_speed)
+            )
+        )
+
+        (branch_idle
+            (
+            )
+            (
+                (!log "Idle - no special action")
+            )
+        )
+    )
+
+    (:method (recovery_response ?inp_entity)
+
+        (branch_use_medkit
+            (and
+                (?current_health (call get_health ?inp_entity))
+                (health_value ?inp_entity ?current_health)
+                (medkit ?inp_entity)
+                (not (under_fire ?inp_entity))
+            )
+            (
+                (!use_medkit ?inp_entity)
+            )
+        )
+
+        (branch_use_station
+            (and
+                (healing_station ?inp_entity ?station)
+                (not (station_offline ?station))
+            )
+            (
+                (!move_to_healing_station ?station)
+                (!heal_at_station ?station)
+            )
+        )
+
+        (branch_recovery_fallback
+            (
+            )
+            (
+                (!log "Cannot recover right now")
+            )
+        )
+    )
+
+    (:method (mobility_response ?inp_entity ?inp_max_speed)
+
+        (branch_sprint
+            (and
+                (route_clear ?inp_entity ?route)
+                (not (route_dangerous ?route))
+                (speed_value ?inp_entity ?inp_max_speed)
+                (call binded_function_with_args "sprinting to objective")
+            )
+            (
+                (!sprint_to ?route ?inp_max_speed)
+            )
+        )
+
+        (branch_walk_alternate
+            (and
+                (alternate_route ?inp_entity ?route)
+                (not (route_blocked ?route))
+            )
+            (
+                (!walk_to ?route)
+            )
+        )
+
+        (branch_mobility_fallback
+            (
+            )
+            (
+                (!log "Cannot reach objective")
+            )
+        )
+    )
+)

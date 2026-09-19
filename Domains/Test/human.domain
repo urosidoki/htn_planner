@@ -1,0 +1,106 @@
+
+(:domain Human top_level_domain
+
+    (:constants
+        (fruit "fruit")
+    )
+
+    (:axiom (is_item_spoiled ?inp_item)
+        (or     (is_old ?inp_item)
+                (has_mold ?inp_item)
+        )
+    )
+
+    (:axiom (find_edible_item ?inp_item_type ?out_item)
+        (and    (item ?out_item)
+                (edible ?out_item)
+                (type ?out_item ?inp_item_type)
+        )
+    )
+
+    (:method (behave) top_level_method
+
+        (branch_hungry
+            (
+            )
+            (       (eat_food @fruit)
+            )
+        )
+
+        (branch_fallback
+            (
+            )
+            (       (!log "Error")
+            )
+        )
+    )
+
+    (:method (behave_upper_body) top_level_method
+
+        (branch_talk_about_food
+            (and    (is_eating ?food)
+            )
+            (       (!talk "This fruit is very tasty!")
+            )
+        )
+
+        (branch_fallback
+            (
+            )
+            (       (!log "Error")
+            )
+        )
+    )
+
+    (:method (eat_food ?inp_food_type)
+
+        (branch_food_in_possession
+            (and    (#find_edible_item ?inp_food_type ?food)
+                    (not (#is_item_spoiled ?food))
+            )
+            (       (!take ?food)
+                    (prepare_food ?food)
+                    (!eat ?food) // This primitive task will write in the database a fact with this format: (is_eating ?food)
+            )
+        )
+
+        (branch_get_food_from_house
+            (
+            )
+            (       // Here should go the tasks for getting food from the house
+            )
+        )
+
+        (branch_buy_food_in_store
+            (
+            )
+            (       // Here should go the tasks for buying food in a store
+            )
+        )
+    )
+
+    (:method (prepare_food ?inp_food)
+
+        (branch_unwrap_food
+            (and    (is_wrapped ?inp_food)
+            )
+            (       (!unwrap ?inp_food)
+            )
+        )
+
+        (branch_peel_food
+            (and    (has_peel ?inp_food)
+            )
+            (       (!peel ?inp_food)
+            )
+        )
+		
+		(branch_do_nothing
+			(and	(call binded_function_with_args "we are doing nothing")
+			)
+			(
+			)
+		)
+		
+    )
+)

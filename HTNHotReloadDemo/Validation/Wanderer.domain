@@ -1,0 +1,45 @@
+(:include "Includes/movement2.domain")
+
+// Isolated test fixture. @REVISION@ is replaced in a binary-directory copy.
+// The editable gameplay domain is never overwritten by the test.
+(:domain Wanderer top_level_domain
+    (:method (run) top_level_method
+        (branch_contextual
+            (and
+                (wanderer_state contextual)
+                (wanderer_location ?location)
+                (contextual_animation_at ?location ?animation)
+            )
+            (
+                (!say "reload-validation-@REVISION@")
+                (!play_contextual_animation ?animation ?location)
+            )
+        )
+        (branch_walking
+            (and
+                (wanderer_state walking)
+                (wanderer_location ?from)
+                (wanderer_destination ?to)
+            )
+            (
+                (!say "reload-validation-@REVISION@")
+                (move_to_async ?from ?to)
+                (#talk_about_destination)
+                (!after_destination_comment)
+            )
+        )
+        (branch_fallback
+            ()
+            ((!wanderer_idle))
+        )
+    )
+    (:method (talk_about_destination)
+        (branch_comment
+            (and (wanderer_location ?location))
+            ((!say "reload-validation-@REVISION@-deferred"))
+        )
+    )
+    (:method (do_wait_for_pathfinding_query) overrides movement
+        (branch_wait () ((!wait_for_pathfinding_query)))
+    )
+)

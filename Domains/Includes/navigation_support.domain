@@ -1,0 +1,25 @@
+(:include "perception_common.domain")
+
+(:domain navigation_support
+
+    (:method (move_to_objective ?inp_entity)
+
+        (branch_direct_route
+            (and
+                (objective_route ?inp_entity ?route)
+                (not (route_blocked ?route))
+            )
+            (
+                (!follow_route ?route)
+            )
+        )
+
+        (branch_wait
+            (
+            )
+            (
+                (!wait_for_route ?inp_entity)
+            )
+        )
+    )
+)

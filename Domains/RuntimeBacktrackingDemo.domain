@@ -1,0 +1,106 @@
+(:domain RuntimeBacktrackingDemo top_level_domain
+
+    (:axiom (find_candidate ?out_candidate)
+        (and
+            (candidate ?out_candidate)
+        )
+    )
+
+
+    (:method (demo_fact_alternatives) top_level_method
+        (alternative_solution
+            (and
+                (candidate ?candidate)
+                (acceptable ?candidate)
+            )
+            (
+                (!fact_alternative_selected ?candidate)
+            )
+        )
+        (first_solution_only
+            (
+            )
+            (
+                (!fact_alternative_not_retried)
+            )
+        )
+    )
+
+
+    (:method (demo_axiom_alternatives) top_level_method
+        (alternative_solution
+            (and
+                (#find_candidate ?candidate)
+                (acceptable ?candidate)
+            )
+            (
+                (!axiom_alternative_selected ?candidate)
+            )
+        )
+        (first_solution_only
+            (
+            )
+            (
+                (!axiom_alternative_not_retried)
+            )
+        )
+    )
+
+
+    (:method (demo_hierarchical_branches) top_level_method
+        (risky_path
+            (
+            )
+            (
+                (demo_failing_child)
+            )
+        )
+        (safe_path
+            (
+            )
+            (
+                (!branch_backtracking_selected_safe_path)
+            )
+        )
+    )
+
+
+    (:method (demo_failing_child)
+        (first_child_branch
+            (and
+                (child_condition_one)
+            )
+            (
+                (!unexpected_child_one)
+            )
+        )
+        (second_child_branch
+            (and
+                (child_condition_two)
+            )
+            (
+                (!unexpected_child_two)
+            )
+        )
+    )
+
+
+    (:method (demo_direct_branch_fallback) top_level_method
+        (unavailable_path
+            (and
+                (direct_path_available)
+            )
+            (
+                (!unexpected_direct_path)
+            )
+        )
+        (fallback_path
+            (
+            )
+            (
+                (!direct_precondition_fallback)
+            )
+        )
+    )
+
+)

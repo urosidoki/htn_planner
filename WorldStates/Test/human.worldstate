@@ -1,0 +1,22 @@
+item "wallet"
+item "sandwich"
+item "banana"
+item "orange"
+item "apple"
+
+edible "sandwich"
+edible "banana"
+edible "orange"
+edible "apple"
+
+type "banana" "fruit"
+type "orange" "fruit"
+type "apple" "fruit"
+
+is_old "banana"
+has_mold "orange"
+
+is_wrapped "sandwich"
+has_peel "apple"
+
+is_eating "apple"

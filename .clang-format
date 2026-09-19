@@ -1,0 +1,11 @@
+# Format Style Options - Created with Clang Power Tools
+---
+BasedOnStyle: Microsoft
+AccessModifierOffset: -4
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveDeclarations: Consecutive
+AlwaysBreakTemplateDeclarations: Yes
+ColumnLimit: 150
+DerivePointerAlignment: true
+SpaceAfterTemplateKeyword: false
+...

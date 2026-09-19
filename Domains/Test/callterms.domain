@@ -1,0 +1,63 @@
+(:domain CallTermsDemo top_level_domain
+
+    (:method (test_callterms) top_level_method
+
+        (branch_callterms
+            (and
+                (call binded_function_with_args "we are doing nothing")
+                (?health (call get_health 7))
+                (?max_speed (call get_max_speed 7))
+            )
+            (
+                (!log "callterms succeeded")
+                (!log ?health)
+                (!log ?max_speed)
+            )
+        )
+    )
+
+    (:method (echo_top_level ?inp_value ?inp_role ?inp_context) top_level_method
+        (branch_top_level_arguments
+            ()
+            (
+                (!top_level_args ?inp_value ?inp_role ?inp_context)
+            )
+        )
+    )
+
+    (:method (callterm_creates_fact_visible_immediately) top_level_method
+
+        (branch_callterm_creates_fact
+            (and
+                (call add_target_available)
+                (target_available ?target)
+            )
+            (
+                (!target_available_visible ?target)
+            )
+        )
+    )
+
+    (:method (callterm_world_state_mutation_survives_backtracking) top_level_method
+
+        (branch_mutate_then_fail
+            (and
+                (call add_target_available)
+                (== 1 2)
+            )
+            (
+                (!should_not_execute)
+            )
+        )
+
+        (branch_observe_persisted_mutation
+            (and
+                (target_available ?target)
+            )
+            (
+                (!persisted_target_available ?target)
+            )
+        )
+    )
+
+)

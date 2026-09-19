@@ -1,0 +1,4 @@
+health 80
+ammo 12
+enemy_distance 15
+mode combat

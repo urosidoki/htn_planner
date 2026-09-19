@@ -1,0 +1,167 @@
+name: HTN validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: htn-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generated-frontend-boundary:
+    name: Generated frontend boundary
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: microsoft/setup-msbuild@v3
+        with:
+          vs-version: '[17.0,18.0)'
+          msbuild-architecture: x64
+      - name: Verify source repository hygiene
+        run: |
+          $trackedServer = git ls-files -- HTNVSCode/server
+          if ($trackedServer) { Write-Error "Generated language-server binary is tracked: $trackedServer"; exit 1 }
+          foreach ($path in @('LICENSE', 'NOTICE.md', 'THIRD_PARTY_NOTICES.md')) {
+            if (-not (Test-Path $path)) { Write-Error "Required distribution notice is missing: $path"; exit 1 }
+          }
+      - name: Generate isolated SDK projects
+        run: |
+          & .\ThirdParty\premake\bin\premake5.exe --sdk vs2022
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify excluded frontend sources
+        run: |
+          foreach ($path in @(
+            'HTNFramework/src/Domain/Interpreter',
+            'HTNFramework/src/Domain/Nodes',
+            'HTNFramework/src/Domain/Parser',
+            'HTNFramework/src/Domain/Semantic',
+            'HTNFramework/src/Domain/Loader')) {
+            if (Test-Path $path) { Write-Error "Removed frontend path is present: $path"; exit 1 }
+          }
+          $project = Get-Content build/sdk/HTNFramework/HTNFramework.vcxproj -Raw
+          foreach ($source in @('HTNDomainInterpreter.cpp', 'HTNDecompositionContext.cpp', 'HTNDomainLoader.cpp', 'HTNDomainParser.cpp', 'HTNDomainNode.cpp')) {
+            if ($project.Contains($source)) { Write-Error "Unexpected frontend source: $source"; exit 1 }
+          }
+      - name: Build isolated translator
+        run: |
+          msbuild HTNSDK.sln /m /t:Rebuild /p:Configuration=StaticReleasePlain /p:Platform=x64 /p:PreferredToolArchitecture=x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Translate domain with isolated frontend
+        run: |
+          New-Item -ItemType Directory -Force test-results/generated | Out-Null
+          & .\bin\sdk\StaticReleasePlain-windows-x86_64\HTNTranslator\HTNTranslator.exe --check .\Domains\AAACombatNPC.domain
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\bin\sdk\StaticReleasePlain-windows-x86_64\HTNTranslator\HTNTranslator.exe .\Domains\AAACombatNPC.domain CreateAAACombatNPCHTN .\test-results\generated
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path test-results/generated/AAACombatNPC.generated.c)) { Write-Error 'Generated source missing'; exit 1 }
+  windows:
+    name: Windows x64 / ${{ matrix.name }}
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debug
+            configuration: Debug
+            options: ''
+            probe: true
+          - name: profile
+            configuration: Profile
+            options: ''
+            probe: true
+          - name: release
+            configuration: Release
+            options: ''
+            probe: true
+          - name: detailed-diagnostics
+            configuration: ProfileDetailed
+            options: --atom-diagnostics --generated-execution-profiling --runtime-backtracking-support=enabled
+            probe: true
+          - name: profile-coarse-diagnostics
+            configuration: Profile
+            options: --atom-diagnostics --generated-execution-profiling --runtime-backtracking-support=enabled
+            probe: true
+          - name: profile-timing-only
+            configuration: Profile
+            options: --no-benchmark-allocations
+            probe: false
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: microsoft/setup-msbuild@v3
+        with:
+          vs-version: '[17.0,18.0)'
+          msbuild-architecture: x64
+      - uses: NuGet/setup-nuget@v3
+      - name: Generate projects with matching flags
+        env:
+          PREMAKE_OPTIONS: ${{ matrix.options }}
+        run: |
+          New-Item -ItemType Directory -Force test-results | Out-Null
+          $premakeArgs = @($env:PREMAKE_OPTIONS -split ' ' | Where-Object { $_ }) + @('vs2022')
+          & .\ThirdParty\premake\bin\premake5.exe @premakeArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Restore GoogleTest
+        run: |
+          nuget restore HTN.sln -NonInteractive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Rebuild solution including tools, demo and dynamic modules
+        env:
+          BUILD_CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          msbuild HTN.sln /m /t:Rebuild /p:Configuration=$env:BUILD_CONFIGURATION /p:Platform=x64 /p:PreferredToolArchitecture=x64 /bl:test-results/build.binlog
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run tests
+        env:
+          BUILD_CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          $testExe = ".\bin\$env:BUILD_CONFIGURATION-windows-x86_64\HTNTest\HTNTest.exe"
+          $testArgs = @('--gtest_output=xml:test-results/tests.xml')
+          & $testExe @testArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [xml]$report = Get-Content test-results/tests.xml
+          if ([int]$report.testsuites.tests -eq 0) { throw 'No tests executed' }
+      - name: Allocation probe self-test
+        if: matrix.probe
+        env:
+          BUILD_CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          & ".\bin\$env:BUILD_CONFIGURATION-windows-x86_64\HTNBenchmark\HTNBenchmark.exe" --allocation-self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Lifecycle equivalence smoke (not a timing threshold)
+        if: matrix.configuration != 'Debug'
+        env:
+          BUILD_CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          & ".\bin\$env:BUILD_CONFIGURATION-windows-x86_64\HTNBenchmark\HTNBenchmark.exe" 100 1 --lifecycle |
+            Tee-Object -FilePath test-results/lifecycle.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Save test reports and build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: htn-${{ matrix.name }}
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 7

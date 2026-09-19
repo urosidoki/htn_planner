@@ -1,0 +1,51 @@
+(:domain aaa_investigation
+    // Investigation precedes confirmed combat: sounds, traces and alerts are
+    // suspicious but do not establish a remembered enemy.
+    (:method (investigation_tick ?inp_npc ?inp_stimulus ?inp_location)
+        (radio_contact
+            (and (== ?inp_stimulus radio) (squad_alert ?inp_npc ?report))
+            ((!acknowledge_radio_alert ?inp_npc ?report)
+             (!set_cautious_stance ?inp_npc)
+             (!move_to_investigation_point ?inp_npc ?inp_location)
+             (!scan_sector ?inp_npc ?inp_location))
+        )
+        (gunshot_with_cover
+            (and (== ?inp_stimulus gunshot) (cover_available ?inp_npc ?cover)
+                 (not (cover_compromised ?cover)))
+            ((!move_to_cover ?inp_npc ?cover)
+             (!report_suspicious_sound ?inp_npc ?inp_location)
+             (!scan_sector ?inp_npc ?inp_location))
+        )
+        (gunshot
+            (and (== ?inp_stimulus gunshot))
+            ((!set_cautious_stance ?inp_npc)
+             (!move_to_investigation_point ?inp_npc ?inp_location)
+             (!scan_sector ?inp_npc ?inp_location))
+        )
+        (footprints
+            (and (== ?inp_stimulus footprints) (track_route ?inp_npc ?inp_location ?route))
+            ((!inspect_tracks ?inp_npc ?inp_location)
+             (!follow_track_route ?inp_npc ?route)
+             (!scan_sector ?inp_npc ?inp_location))
+        )
+        (visual_anomaly
+            (and (== ?inp_stimulus anomaly))
+            ((!focus_attention ?inp_npc ?inp_location)
+             (!move_to_investigation_point ?inp_npc ?inp_location)
+             (!inspect_anomaly ?inp_npc ?inp_location))
+        )
+        (blocked_route
+            (and (route_blocked_to ?inp_npc ?inp_location)
+                 (alternate_investigation_route ?inp_npc ?inp_location ?route))
+            ((!follow_investigation_route ?inp_npc ?route)
+             (!scan_sector ?inp_npc ?inp_location))
+        )
+        (generic
+            ()
+            ((!set_cautious_stance ?inp_npc)
+             (!move_to_investigation_point ?inp_npc ?inp_location)
+             (!scan_sector ?inp_npc ?inp_location)
+             (!report_investigation_result ?inp_npc ?inp_stimulus ?inp_location))
+        )
+    )
+)

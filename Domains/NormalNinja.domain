@@ -1,0 +1,13 @@
+(:include "Includes/Ninja.domain")
+
+(:domain NormalNinja top_level_domain
+    (:method (run) top_level_method
+        (branch_run
+            (
+            )
+            (
+                (do_combat 1)
+            )
+        )
+    )
+)

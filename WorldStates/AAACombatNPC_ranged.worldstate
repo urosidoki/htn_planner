@@ -1,0 +1,14 @@
+controlled_npc 1
+visible_enemy 1 301
+hostile_enemy 301
+enemy_distance 1 301 42
+visible_enemy 1 302
+hostile_enemy 302
+enemy_distance 1 302 16
+weapon_equipped 1 melee
+weapon_available 1 ranged
+ammo 1 12
+health 1 90
+clear_shot 1 302
+cover_available 1 "concrete_barrier"
+

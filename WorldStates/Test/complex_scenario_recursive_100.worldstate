@@ -1,0 +1,724 @@
+controlled_entity 7
+health_value 7 50
+speed_value 7 1.0
+entity_count 100
+
+entity 0 202
+health_value 202 50
+speed_value 202 1.0
+enemy_recently_seen 202 10000
+enemy_hostile 10000
+critical_threat 10000
+enemy_close 10000
+cover_available 202 "cover_0"
+has_weapon 202
+ammo_available 202
+
+entity 1 232
+health_value 232 50
+speed_value 232 1.0
+enemy_recently_seen 232 10001
+enemy_hostile 10001
+has_backup_weapon 232
+ammo_available 232
+
+entity 2 334
+health_value 334 50
+speed_value 334 1.0
+needs_healing 334
+medkit 334
+
+entity 3 400
+health_value 400 50
+speed_value 400 1.0
+objective_far 400
+path_open 400
+route_clear 400 "route_3"
+
+entity 4 401
+health_value 401 50
+speed_value 401 1.0
+
+entity 5 402
+health_value 402 50
+speed_value 402 1.0
+enemy_recently_seen 402 10005
+enemy_hostile 10005
+critical_threat 10005
+enemy_close 10005
+cover_available 402 "cover_5"
+has_weapon 402
+ammo_available 402
+
+entity 6 403
+health_value 403 50
+speed_value 403 1.0
+enemy_recently_seen 403 10006
+enemy_hostile 10006
+has_backup_weapon 403
+ammo_available 403
+
+entity 7 404
+health_value 404 50
+speed_value 404 1.0
+needs_healing 404
+medkit 404
+
+entity 8 405
+health_value 405 50
+speed_value 405 1.0
+objective_far 405
+path_open 405
+route_clear 405 "route_8"
+
+entity 9 406
+health_value 406 50
+speed_value 406 1.0
+
+entity 10 407
+health_value 407 50
+speed_value 407 1.0
+enemy_recently_seen 407 10010
+enemy_hostile 10010
+critical_threat 10010
+enemy_close 10010
+cover_available 407 "cover_10"
+has_weapon 407
+ammo_available 407
+
+entity 11 408
+health_value 408 50
+speed_value 408 1.0
+enemy_recently_seen 408 10011
+enemy_hostile 10011
+has_backup_weapon 408
+ammo_available 408
+
+entity 12 409
+health_value 409 50
+speed_value 409 1.0
+needs_healing 409
+medkit 409
+
+entity 13 410
+health_value 410 50
+speed_value 410 1.0
+objective_far 410
+path_open 410
+route_clear 410 "route_13"
+
+entity 14 411
+health_value 411 50
+speed_value 411 1.0
+
+entity 15 412
+health_value 412 50
+speed_value 412 1.0
+enemy_recently_seen 412 10015
+enemy_hostile 10015
+critical_threat 10015
+enemy_close 10015
+cover_available 412 "cover_15"
+has_weapon 412
+ammo_available 412
+
+entity 16 413
+health_value 413 50
+speed_value 413 1.0
+enemy_recently_seen 413 10016
+enemy_hostile 10016
+has_backup_weapon 413
+ammo_available 413
+
+entity 17 414
+health_value 414 50
+speed_value 414 1.0
+needs_healing 414
+medkit 414
+
+entity 18 415
+health_value 415 50
+speed_value 415 1.0
+objective_far 415
+path_open 415
+route_clear 415 "route_18"
+
+entity 19 416
+health_value 416 50
+speed_value 416 1.0
+
+entity 20 417
+health_value 417 50
+speed_value 417 1.0
+enemy_recently_seen 417 10020
+enemy_hostile 10020
+critical_threat 10020
+enemy_close 10020
+cover_available 417 "cover_20"
+has_weapon 417
+ammo_available 417
+
+entity 21 418
+health_value 418 50
+speed_value 418 1.0
+enemy_recently_seen 418 10021
+enemy_hostile 10021
+has_backup_weapon 418
+ammo_available 418
+
+entity 22 419
+health_value 419 50
+speed_value 419 1.0
+needs_healing 419
+medkit 419
+
+entity 23 420
+health_value 420 50
+speed_value 420 1.0
+objective_far 420
+path_open 420
+route_clear 420 "route_23"
+
+entity 24 421
+health_value 421 50
+speed_value 421 1.0
+
+entity 25 422
+health_value 422 50
+speed_value 422 1.0
+enemy_recently_seen 422 10025
+enemy_hostile 10025
+critical_threat 10025
+enemy_close 10025
+cover_available 422 "cover_25"
+has_weapon 422
+ammo_available 422
+
+entity 26 423
+health_value 423 50
+speed_value 423 1.0
+enemy_recently_seen 423 10026
+enemy_hostile 10026
+has_backup_weapon 423
+ammo_available 423
+
+entity 27 424
+health_value 424 50
+speed_value 424 1.0
+needs_healing 424
+medkit 424
+
+entity 28 425
+health_value 425 50
+speed_value 425 1.0
+objective_far 425
+path_open 425
+route_clear 425 "route_28"
+
+entity 29 426
+health_value 426 50
+speed_value 426 1.0
+
+entity 30 427
+health_value 427 50
+speed_value 427 1.0
+enemy_recently_seen 427 10030
+enemy_hostile 10030
+critical_threat 10030
+enemy_close 10030
+cover_available 427 "cover_30"
+has_weapon 427
+ammo_available 427
+
+entity 31 428
+health_value 428 50
+speed_value 428 1.0
+enemy_recently_seen 428 10031
+enemy_hostile 10031
+has_backup_weapon 428
+ammo_available 428
+
+entity 32 429
+health_value 429 50
+speed_value 429 1.0
+needs_healing 429
+medkit 429
+
+entity 33 430
+health_value 430 50
+speed_value 430 1.0
+objective_far 430
+path_open 430
+route_clear 430 "route_33"
+
+entity 34 431
+health_value 431 50
+speed_value 431 1.0
+
+entity 35 432
+health_value 432 50
+speed_value 432 1.0
+enemy_recently_seen 432 10035
+enemy_hostile 10035
+critical_threat 10035
+enemy_close 10035
+cover_available 432 "cover_35"
+has_weapon 432
+ammo_available 432
+
+entity 36 433
+health_value 433 50
+speed_value 433 1.0
+enemy_recently_seen 433 10036
+enemy_hostile 10036
+has_backup_weapon 433
+ammo_available 433
+
+entity 37 434
+health_value 434 50
+speed_value 434 1.0
+needs_healing 434
+medkit 434
+
+entity 38 435
+health_value 435 50
+speed_value 435 1.0
+objective_far 435
+path_open 435
+route_clear 435 "route_38"
+
+entity 39 436
+health_value 436 50
+speed_value 436 1.0
+
+entity 40 437
+health_value 437 50
+speed_value 437 1.0
+enemy_recently_seen 437 10040
+enemy_hostile 10040
+critical_threat 10040
+enemy_close 10040
+cover_available 437 "cover_40"
+has_weapon 437
+ammo_available 437
+
+entity 41 438
+health_value 438 50
+speed_value 438 1.0
+enemy_recently_seen 438 10041
+enemy_hostile 10041
+has_backup_weapon 438
+ammo_available 438
+
+entity 42 439
+health_value 439 50
+speed_value 439 1.0
+needs_healing 439
+medkit 439
+
+entity 43 440
+health_value 440 50
+speed_value 440 1.0
+objective_far 440
+path_open 440
+route_clear 440 "route_43"
+
+entity 44 441
+health_value 441 50
+speed_value 441 1.0
+
+entity 45 442
+health_value 442 50
+speed_value 442 1.0
+enemy_recently_seen 442 10045
+enemy_hostile 10045
+critical_threat 10045
+enemy_close 10045
+cover_available 442 "cover_45"
+has_weapon 442
+ammo_available 442
+
+entity 46 443
+health_value 443 50
+speed_value 443 1.0
+enemy_recently_seen 443 10046
+enemy_hostile 10046
+has_backup_weapon 443
+ammo_available 443
+
+entity 47 444
+health_value 444 50
+speed_value 444 1.0
+needs_healing 444
+medkit 444
+
+entity 48 445
+health_value 445 50
+speed_value 445 1.0
+objective_far 445
+path_open 445
+route_clear 445 "route_48"
+
+entity 49 446
+health_value 446 50
+speed_value 446 1.0
+
+entity 50 447
+health_value 447 50
+speed_value 447 1.0
+enemy_recently_seen 447 10050
+enemy_hostile 10050
+critical_threat 10050
+enemy_close 10050
+cover_available 447 "cover_50"
+has_weapon 447
+ammo_available 447
+
+entity 51 448
+health_value 448 50
+speed_value 448 1.0
+enemy_recently_seen 448 10051
+enemy_hostile 10051
+has_backup_weapon 448
+ammo_available 448
+
+entity 52 449
+health_value 449 50
+speed_value 449 1.0
+needs_healing 449
+medkit 449
+
+entity 53 450
+health_value 450 50
+speed_value 450 1.0
+objective_far 450
+path_open 450
+route_clear 450 "route_53"
+
+entity 54 451
+health_value 451 50
+speed_value 451 1.0
+
+entity 55 452
+health_value 452 50
+speed_value 452 1.0
+enemy_recently_seen 452 10055
+enemy_hostile 10055
+critical_threat 10055
+enemy_close 10055
+cover_available 452 "cover_55"
+has_weapon 452
+ammo_available 452
+
+entity 56 453
+health_value 453 50
+speed_value 453 1.0
+enemy_recently_seen 453 10056
+enemy_hostile 10056
+has_backup_weapon 453
+ammo_available 453
+
+entity 57 454
+health_value 454 50
+speed_value 454 1.0
+needs_healing 454
+medkit 454
+
+entity 58 455
+health_value 455 50
+speed_value 455 1.0
+objective_far 455
+path_open 455
+route_clear 455 "route_58"
+
+entity 59 456
+health_value 456 50
+speed_value 456 1.0
+
+entity 60 457
+health_value 457 50
+speed_value 457 1.0
+enemy_recently_seen 457 10060
+enemy_hostile 10060
+critical_threat 10060
+enemy_close 10060
+cover_available 457 "cover_60"
+has_weapon 457
+ammo_available 457
+
+entity 61 458
+health_value 458 50
+speed_value 458 1.0
+enemy_recently_seen 458 10061
+enemy_hostile 10061
+has_backup_weapon 458
+ammo_available 458
+
+entity 62 459
+health_value 459 50
+speed_value 459 1.0
+needs_healing 459
+medkit 459
+
+entity 63 460
+health_value 460 50
+speed_value 460 1.0
+objective_far 460
+path_open 460
+route_clear 460 "route_63"
+
+entity 64 461
+health_value 461 50
+speed_value 461 1.0
+
+entity 65 462
+health_value 462 50
+speed_value 462 1.0
+enemy_recently_seen 462 10065
+enemy_hostile 10065
+critical_threat 10065
+enemy_close 10065
+cover_available 462 "cover_65"
+has_weapon 462
+ammo_available 462
+
+entity 66 463
+health_value 463 50
+speed_value 463 1.0
+enemy_recently_seen 463 10066
+enemy_hostile 10066
+has_backup_weapon 463
+ammo_available 463
+
+entity 67 464
+health_value 464 50
+speed_value 464 1.0
+needs_healing 464
+medkit 464
+
+entity 68 465
+health_value 465 50
+speed_value 465 1.0
+objective_far 465
+path_open 465
+route_clear 465 "route_68"
+
+entity 69 466
+health_value 466 50
+speed_value 466 1.0
+
+entity 70 467
+health_value 467 50
+speed_value 467 1.0
+enemy_recently_seen 467 10070
+enemy_hostile 10070
+critical_threat 10070
+enemy_close 10070
+cover_available 467 "cover_70"
+has_weapon 467
+ammo_available 467
+
+entity 71 468
+health_value 468 50
+speed_value 468 1.0
+enemy_recently_seen 468 10071
+enemy_hostile 10071
+has_backup_weapon 468
+ammo_available 468
+
+entity 72 469
+health_value 469 50
+speed_value 469 1.0
+needs_healing 469
+medkit 469
+
+entity 73 470
+health_value 470 50
+speed_value 470 1.0
+objective_far 470
+path_open 470
+route_clear 470 "route_73"
+
+entity 74 471
+health_value 471 50
+speed_value 471 1.0
+
+entity 75 472
+health_value 472 50
+speed_value 472 1.0
+enemy_recently_seen 472 10075
+enemy_hostile 10075
+critical_threat 10075
+enemy_close 10075
+cover_available 472 "cover_75"
+has_weapon 472
+ammo_available 472
+
+entity 76 473
+health_value 473 50
+speed_value 473 1.0
+enemy_recently_seen 473 10076
+enemy_hostile 10076
+has_backup_weapon 473
+ammo_available 473
+
+entity 77 474
+health_value 474 50
+speed_value 474 1.0
+needs_healing 474
+medkit 474
+
+entity 78 475
+health_value 475 50
+speed_value 475 1.0
+objective_far 475
+path_open 475
+route_clear 475 "route_78"
+
+entity 79 476
+health_value 476 50
+speed_value 476 1.0
+
+entity 80 477
+health_value 477 50
+speed_value 477 1.0
+enemy_recently_seen 477 10080
+enemy_hostile 10080
+critical_threat 10080
+enemy_close 10080
+cover_available 477 "cover_80"
+has_weapon 477
+ammo_available 477
+
+entity 81 478
+health_value 478 50
+speed_value 478 1.0
+enemy_recently_seen 478 10081
+enemy_hostile 10081
+has_backup_weapon 478
+ammo_available 478
+
+entity 82 479
+health_value 479 50
+speed_value 479 1.0
+needs_healing 479
+medkit 479
+
+entity 83 480
+health_value 480 50
+speed_value 480 1.0
+objective_far 480
+path_open 480
+route_clear 480 "route_83"
+
+entity 84 481
+health_value 481 50
+speed_value 481 1.0
+
+entity 85 482
+health_value 482 50
+speed_value 482 1.0
+enemy_recently_seen 482 10085
+enemy_hostile 10085
+critical_threat 10085
+enemy_close 10085
+cover_available 482 "cover_85"
+has_weapon 482
+ammo_available 482
+
+entity 86 483
+health_value 483 50
+speed_value 483 1.0
+enemy_recently_seen 483 10086
+enemy_hostile 10086
+has_backup_weapon 483
+ammo_available 483
+
+entity 87 484
+health_value 484 50
+speed_value 484 1.0
+needs_healing 484
+medkit 484
+
+entity 88 485
+health_value 485 50
+speed_value 485 1.0
+objective_far 485
+path_open 485
+route_clear 485 "route_88"
+
+entity 89 486
+health_value 486 50
+speed_value 486 1.0
+
+entity 90 487
+health_value 487 50
+speed_value 487 1.0
+enemy_recently_seen 487 10090
+enemy_hostile 10090
+critical_threat 10090
+enemy_close 10090
+cover_available 487 "cover_90"
+has_weapon 487
+ammo_available 487
+
+entity 91 488
+health_value 488 50
+speed_value 488 1.0
+enemy_recently_seen 488 10091
+enemy_hostile 10091
+has_backup_weapon 488
+ammo_available 488
+
+entity 92 489
+health_value 489 50
+speed_value 489 1.0
+needs_healing 489
+medkit 489
+
+entity 93 490
+health_value 490 50
+speed_value 490 1.0
+objective_far 490
+path_open 490
+route_clear 490 "route_93"
+
+entity 94 491
+health_value 491 50
+speed_value 491 1.0
+
+entity 95 492
+health_value 492 50
+speed_value 492 1.0
+enemy_recently_seen 492 10095
+enemy_hostile 10095
+critical_threat 10095
+enemy_close 10095
+cover_available 492 "cover_95"
+has_weapon 492
+ammo_available 492
+
+entity 96 493
+health_value 493 50
+speed_value 493 1.0
+enemy_recently_seen 493 10096
+enemy_hostile 10096
+has_backup_weapon 493
+ammo_available 493
+
+entity 97 494
+health_value 494 50
+speed_value 494 1.0
+needs_healing 494
+medkit 494
+
+entity 98 495
+health_value 495 50
+speed_value 495 1.0
+objective_far 495
+path_open 495
+route_clear 495 "route_98"
+
+entity 99 496
+health_value 496 50
+speed_value 496 1.0

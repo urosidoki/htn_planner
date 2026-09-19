@@ -1,0 +1,6 @@
+controlled_npc 1
+combat_memory 1 501 "warehouse"
+enemy_tracks 1 501 "muddy_corridor"
+suspicious_stimulus 1 anomaly "roof"
+health 1 65
+

@@ -1,0 +1,20 @@
+name: HTN SDK matrix
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, package and validate all eight variants
+        shell: powershell
+        run: ./SDK/BuildAndValidate.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: htn-sdk-windows-x86_64
+          path: dist/HTNSDK-*.zip

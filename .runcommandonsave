@@ -1,0 +1,3 @@
+[PreSave]
+Commands=Edit.FormatDocument
+ExcludePaths=ThirdParty

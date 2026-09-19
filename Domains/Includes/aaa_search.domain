@@ -1,0 +1,41 @@
+(:domain aaa_search
+    // Search runs only with combat_memory: the NPC had an actual opponent and
+    // has now lost visual contact. Root combat takes precedence if reacquired.
+    (:method (search_tick ?inp_npc ?inp_enemy ?inp_last_location)
+        (fresh_tracks
+            (and (enemy_tracks ?inp_npc ?inp_enemy ?route))
+            ((!announce_lost_enemy ?inp_npc ?inp_enemy)
+             (!follow_enemy_tracks ?inp_npc ?route)
+             (!scan_sector ?inp_npc ?inp_last_location))
+        )
+        (heard_escape
+            (and (escape_sound ?inp_npc ?inp_enemy ?location))
+            ((!announce_lost_enemy ?inp_npc ?inp_enemy)
+             (!move_to_search_point ?inp_npc ?location)
+             (!scan_sector ?inp_npc ?location))
+        )
+        (search_with_squad
+            (and (squad_search_route ?inp_npc ?inp_enemy ?route))
+            ((!coordinate_squad_search ?inp_npc ?inp_enemy)
+             (!follow_search_route ?inp_npc ?route)
+             (!scan_sector ?inp_npc ?inp_last_location))
+        )
+        (last_known_cover
+            (and (cover_at ?inp_last_location ?cover))
+            ((!move_to_search_point ?inp_npc ?inp_last_location)
+             (!clear_cover ?inp_npc ?cover)
+             (!scan_sector ?inp_npc ?inp_last_location))
+        )
+        (search_perimeter
+            (and (search_perimeter ?inp_npc ?inp_last_location ?route))
+            ((!follow_search_route ?inp_npc ?route)
+             (!scan_sector ?inp_npc ?inp_last_location))
+        )
+        (last_known_position
+            ()
+            ((!move_to_search_point ?inp_npc ?inp_last_location)
+             (!scan_sector ?inp_npc ?inp_last_location)
+             (!report_search_progress ?inp_npc ?inp_enemy))
+        )
+    )
+)

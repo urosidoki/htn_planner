@@ -1,0 +1,9 @@
+(:domain perception_common
+
+    (:axiom (has_recent_event ?inp_entity ?out_event)
+        (or
+            (event_visible ?inp_entity ?out_event)
+            (event_recently_heard ?inp_entity ?out_event)
+        )
+    )
+)

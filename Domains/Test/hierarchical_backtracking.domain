@@ -1,0 +1,149 @@
+(:domain HierarchicalBacktracking top_level_domain
+
+    (:axiom (find_candidate ?out_candidate)
+        (and
+            (candidate ?out_candidate)
+        )
+    )
+
+
+    (:method (validate_parent_guard) top_level_method
+        (run
+            (
+            )
+            (
+                (do_behavior_parent_guard enemy)
+            )
+        )
+    )
+
+    (:method (validate_child_guard) top_level_method
+        (run
+            (
+            )
+            (
+                (do_behavior_child_guard enemy)
+            )
+        )
+    )
+
+    (:method (do_behavior_parent_guard ?inp_threat) top_level_method
+        (branch_combat
+            (and
+                (in_combat_state)
+            )
+            (
+                (do_combat_unconditional ?inp_threat)
+            )
+        )
+        (branch_search
+            (
+            )
+            (
+                (do_search ?inp_threat)
+            )
+        )
+    )
+
+    (:method (do_behavior_child_guard ?inp_threat) top_level_method
+        (branch_combat
+            (
+            )
+            (
+                (do_combat_guarded ?inp_threat)
+            )
+        )
+        (branch_search
+            (
+            )
+            (
+                (do_search ?inp_threat)
+            )
+        )
+    )
+
+    (:method (do_combat_unconditional ?inp_threat)
+        (branch_fire
+            (
+            )
+            (
+                (!fire ?inp_threat)
+            )
+        )
+        (branch_wait
+            (
+            )
+            (
+                (!log "combat wait")
+            )
+        )
+    )
+
+    (:method (do_combat_guarded ?inp_threat)
+        (branch_fire
+            (and
+                (in_combat_state)
+            )
+            (
+                (!fire ?inp_threat)
+            )
+        )
+        (branch_wait
+            (and
+                (in_combat_state)
+            )
+            (
+                (!log "combat wait")
+            )
+        )
+    )
+
+    (:method (do_search ?inp_threat)
+        (branch_search
+            (
+            )
+            (
+                (!search ?inp_threat)
+            )
+        )
+    )
+
+    (:method (validate_fact_backtracking) top_level_method
+        (branch_selected
+            (and
+                (candidate ?candidate)
+                (acceptable ?candidate)
+            )
+            (
+                (!selected_fact ?candidate)
+            )
+        )
+        (branch_fallback
+            (
+            )
+            (
+                (!fact_fallback)
+            )
+        )
+    )
+
+    (:method (validate_axiom_backtracking) top_level_method
+        (branch_selected
+            (and
+                (#find_candidate ?candidate)
+                (acceptable ?candidate)
+            )
+            (
+                (!selected_axiom ?candidate)
+            )
+        )
+        (branch_fallback
+            (
+            )
+            (
+                (!axiom_fallback)
+            )
+        )
+    )
+
+)

@@ -1,0 +1,26 @@
+(:include "Includes/react_to_events.domain")
+(:include "Includes/navigation_support.domain")
+
+(:domain IncludeDemo top_level_domain
+
+    (:method (run_include_demo) top_level_method
+
+        (branch_active_entity
+            (and
+                (controlled_entity ?entity)
+            )
+            (
+                (react_to_event ?entity)
+                (move_to_objective ?entity)
+            )
+        )
+
+        (branch_no_entity
+            (
+            )
+            (
+                (!log "No active entity for include demo")
+            )
+        )
+    )
+)

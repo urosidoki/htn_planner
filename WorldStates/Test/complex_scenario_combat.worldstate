@@ -1,0 +1,13 @@
+controlled_entity 7
+health_value 7 50
+speed_value 7 1.0
+
+enemy_recently_seen 7 202
+enemy_hostile 202
+
+has_backup_weapon 7
+ammo_available 7
+
+objective_far 7
+path_open 7
+route_clear 7 "route_A"

@@ -1,0 +1,34 @@
+(:domain PackageIntegrationConsumer top_level_domain
+
+    (:method (run) top_level_method
+        (branch
+            ()
+            (
+                (!step "one")
+                (!step "two")
+                (!step "three")
+            )
+        )
+    )
+
+    (:method (run_small) top_level_method
+        (branch
+            ()
+            (
+                (!step "small-one")
+                (!step "small-two")
+            )
+        )
+    )
+
+    (:method (always_fail) top_level_method
+        (never
+            (and
+                (== 1 2)
+            )
+            (
+                (!unexpected)
+            )
+        )
+    )
+)

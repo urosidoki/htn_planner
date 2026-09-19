@@ -1,0 +1,95 @@
+(:include "Includes/aaa_orders.domain")
+(:include "Includes/aaa_combat.domain")
+(:include "Includes/aaa_investigation.domain")
+(:include "Includes/aaa_search.domain")
+(:include "Includes/aaa_idle.domain")
+
+// One planning tick represents one decision. The host applies the emitted
+// primitive actions, updates facts, then replans on the next tick.
+(:domain AAACombatNPC top_level_domain
+    (:method (run) top_level_method
+        (high_priority_script
+            (and
+                (controlled_npc ?npc)
+                (scripted_order ?npc high ?order ?target)
+            )
+            (
+                (!announce_state "high_order" ?npc)
+                (execute_scripted_order ?npc ?order ?target)
+            )
+        )
+        (visible_combat
+            (and
+                (controlled_npc ?npc)
+                (visible_enemy ?npc ?enemy)
+                (hostile_enemy ?enemy)
+                (enemy_distance ?npc ?enemy ?distance)
+                (not (enemy_dead ?enemy))
+                (not
+                    (and
+                        (visible_enemy ?npc ?other)
+                        (hostile_enemy ?other)
+                        (enemy_distance ?npc ?other ?other_distance)
+                        (< ?other_distance ?distance)
+                    )
+                )
+            )
+            (
+                (!announce_state "combat" ?npc)
+                (combat_tick ?npc ?enemy ?distance)
+            )
+        )
+        (medium_priority_script
+            (and
+                (controlled_npc ?npc)
+                (scripted_order ?npc medium ?order ?target)
+            )
+            (
+                (!announce_state "medium_order" ?npc)
+                (execute_scripted_order ?npc ?order ?target)
+            )
+        )
+        (investigate_precombat
+            (and
+                (controlled_npc ?npc)
+                (suspicious_stimulus ?npc ?stimulus ?location)
+                (not (combat_memory ?npc ?lost_enemy ?last_location))
+            )
+            (
+                (!announce_state "investigation" ?npc)
+                (investigation_tick ?npc ?stimulus ?location)
+            )
+        )
+        (search_lost_enemy
+            (and
+                (controlled_npc ?npc)
+                (combat_memory ?npc ?enemy ?last_location)
+            )
+            (
+                (!announce_state "search" ?npc)
+                (search_tick ?npc ?enemy ?last_location)
+            )
+        )
+        (low_priority_script
+            (and
+                (controlled_npc ?npc)
+                (scripted_order ?npc low ?order ?target)
+            )
+            (
+                (!announce_state "low_order" ?npc)
+                (execute_scripted_order ?npc ?order ?target)
+            )
+        )
+        (idle
+            (and (controlled_npc ?npc))
+            (
+                (!announce_state "idle" ?npc)
+                (idle_tick ?npc)
+            )
+        )
+        (no_npc
+            ()
+            ((!announce_state "no_controlled_npc"))
+        )
+    )
+)

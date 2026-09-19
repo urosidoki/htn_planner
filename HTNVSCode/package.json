@@ -1,0 +1,96 @@
+{
+  "name": "htn-language-support",
+  "displayName": "HTN Language Support",
+  "description": "Language support for HTN domain files using HTNLanguageServer.",
+  "version": "0.4.2",
+  "publisher": "shareisevolve",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:htn",
+    "onCommand:htn.compileDomain",
+    "onCommand:htn.selectLanguageServer"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "htn",
+        "aliases": [
+          "HTN",
+          "htn"
+        ],
+        "extensions": [
+          ".domain"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "htn",
+        "scopeName": "source.htn",
+        "path": "./syntaxes/htn.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "HTN",
+      "properties": {
+        "htn.languageServer.path": {
+          "type": "string",
+          "default": "",
+          "description": "Fallback absolute path to HTNLanguageServer executable. Installed VSIX packages prefer their bundled server so stale global paths cannot override a newer packaged server."
+        },
+        "htn.languageServer.trace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show HTN Language Server stderr in the HTN output channel."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "htn.compileDomain",
+        "title": "HTN: Compile Active Domain",
+        "category": "HTN"
+      },
+      {
+        "command": "htn.selectLanguageServer",
+        "title": "HTN: Select Language Server Executable",
+        "category": "HTN"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "htn.compileDomain",
+        "key": "f7",
+        "when": "editorTextFocus && editorLangId == htn"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "htn.compileDomain",
+          "when": "editorLangId == htn",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "echo No compilation required",
+    "package": "npx @vscode/vsce package",
+    "package:vsix": "powershell -ExecutionPolicy Bypass -File ./package-vsix.ps1"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.2.1"
+  }
+}

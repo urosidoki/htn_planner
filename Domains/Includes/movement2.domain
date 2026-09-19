@@ -1,0 +1,72 @@
+(:domain movement base
+
+    (:method (do_wait_for_pathfinding_query) base)
+
+    // Responsible for constructing the primitive walk tasks that belong to one
+    // particular async pathfinding query. Query id is part of the segment key so
+    // paths from different requests can never be mixed.
+    (:method (construct_path_segments ?inp_query_id ?inp_segment_index ?inp_segment_count)
+
+        (branch_finished
+            (and
+                (not (pathfinding_segment ?inp_query_id ?inp_segment_index ?any_segment_location))
+            )
+            (
+            )
+        )
+
+        (branch_next_segment
+            (and
+                (pathfinding_segment ?inp_query_id ?inp_segment_index ?inp_segment_location)
+            )
+            (
+                (!walk_segment ?inp_segment_location)
+                (construct_path_segments ?inp_query_id (call inc ?inp_segment_index) ?inp_segment_count)
+            )
+        )
+    )
+
+    // Public movement function. The async request is represented as persistent
+    // world-state knowledge so subsequent replans can wait for or consume it.
+    (:method (move_to_async ?inp_from_location ?inp_to_location)
+
+        // Moving to our current location is already satisfied. Keep this as the
+        // first branch so no async pathfinding request is created.
+        (branch_already_at_destination
+            (and
+                (call same_location ?inp_from_location ?inp_to_location)
+            )
+            (	(!log "Already at location " ?inp_to_location)
+            )
+        )
+
+        (branch_query_ready
+            (and
+                (pathfind_state succeeded ?inp_from_location ?inp_to_location ?query_id)
+                (pathfinder ?query_id ?num_segments ?inp_from_location ?inp_to_location)
+            )
+            (
+                (construct_path_segments ?query_id 0 ?num_segments)
+            )
+        )
+
+        (branch_query_in_progress
+            (and
+                (pathfind_state in_progress ?inp_from_location ?inp_to_location ?any_query_id)
+            )
+            (
+                (do_wait_for_pathfinding_query)
+            )
+        )
+
+        // Request a new query only when this exact from/to pair has no query.
+        (branch_new_query
+            (and
+                (not (pathfind_state ?any_state ?inp_from_location ?inp_to_location ?any_query_id))
+                (?query_id (call request_path_from_to ?inp_from_location ?inp_to_location))
+            )
+            (
+            )
+        )
+    )
+)

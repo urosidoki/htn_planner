@@ -1,0 +1,12 @@
+controlled_npc 1
+scripted_order 1 high evacuate "extraction_zone"
+visible_enemy 1 101
+hostile_enemy 101
+enemy_distance 1 101 4
+weapon_equipped 1 melee
+under_fire 1
+health 1 70
+suspicious_stimulus 1 gunshot "market"
+combat_memory 1 101 "market"
+patrol_route 1 "north_loop"
+

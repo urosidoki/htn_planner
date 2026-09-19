@@ -1,0 +1,35 @@
+(:include "perception_common.domain")
+
+(:domain react_to_events
+
+    (:method (react_to_event ?inp_entity)
+
+        (branch_react_to_danger
+            (and
+                (#has_recent_event ?inp_entity ?event)
+                (event_dangerous ?event)
+            )
+            (
+                (!face_event ?event)
+                (!raise_alert ?inp_entity ?event)
+            )
+        )
+
+        (branch_react_to_non_dangerous_event
+            (and
+                (#has_recent_event ?inp_entity ?event)
+            )
+            (
+                (!inspect_event ?event)
+            )
+        )
+
+        (branch_no_event
+            (
+            )
+            (
+                (!continue_normal_behavior ?inp_entity)
+            )
+        )
+    )
+)

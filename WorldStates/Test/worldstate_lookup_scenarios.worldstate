@@ -1,0 +1,13 @@
+active_entity 0
+entity_state 0 0
+entity_target 0 0
+entity_squad 0 0
+entity_weapon 0 0
+entity_cover 0 0
+entity_route 0 0
+target_status 0 1
+squad_order 0 2
+weapon_status 0 1
+cover_quality 0 3
+route_status 0 1
+ammo_available 0

@@ -1,0 +1,83 @@
+(:domain BuiltinComparisonsDemo top_level_domain
+
+    // Small debugger-oriented domain that demonstrates the six core comparison
+    // built-ins. The values are first bound from the world state and are then
+    // compared without going through callterms.
+    //
+    // Built-ins demonstrated:
+    //   ==  !=  <  <=  >  >=
+
+    (:method (run) top_level_method
+
+        // Demonstrates <=, !=, < and symbol equality.
+        (branch_critical_close_combat
+            (and
+                (health ?health)
+                (ammo ?ammo)
+                (enemy_distance ?distance)
+                (mode ?mode)
+                (<= ?health 25)
+                (!= ?ammo 0)
+                (< ?distance 10)
+                (== ?mode combat)
+            )
+            (
+                (!report_comparison_case "critical_close_combat" ?health ?ammo ?distance ?mode)
+            )
+        )
+
+        // Demonstrates >, >=, <= and equality against a symbol.
+        (branch_ready_to_engage
+            (and
+                (health ?health)
+                (ammo ?ammo)
+                (enemy_distance ?distance)
+                (mode ?mode)
+                (> ?health 25)
+                (>= ?ammo 5)
+                (<= ?distance 20)
+                (== ?mode combat)
+            )
+            (
+                (!report_comparison_case "ready_to_engage" ?health ?ammo ?distance ?mode)
+            )
+        )
+
+        // Demonstrates numeric equality.
+        (branch_out_of_ammo
+            (and
+                (health ?health)
+                (ammo ?ammo)
+                (enemy_distance ?distance)
+                (mode ?mode)
+                (== ?ammo 0)
+            )
+            (
+                (!report_comparison_case "out_of_ammo" ?health ?ammo ?distance ?mode)
+            )
+        )
+
+        // Demonstrates >= and symbol inequality.
+        (branch_safe_non_combat
+            (and
+                (health ?health)
+                (ammo ?ammo)
+                (enemy_distance ?distance)
+                (mode ?mode)
+                (>= ?distance 20)
+                (!= ?mode combat)
+            )
+            (
+                (!report_comparison_case "safe_non_combat" ?health ?ammo ?distance ?mode)
+            )
+        )
+
+        (branch_fallback
+            (
+            )
+            (
+                (!report_comparison_case "fallback")
+            )
+        )
+    )
+)

@@ -1,0 +1,6 @@
+controlled_npc 1
+suspicious_stimulus 1 gunshot "upper_walkway"
+cover_available 1 "pillar_7"
+health 1 100
+patrol_route 1 "east_loop"
+

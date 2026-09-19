@@ -1,0 +1,7 @@
+controlled_npc 1
+scripted_order 1 medium escort "scientist"
+escort_route 1 "scientist" "service_tunnel"
+suspicious_stimulus 1 gunshot "atrium"
+combat_memory 1 410 "loading_bay"
+health 1 80
+

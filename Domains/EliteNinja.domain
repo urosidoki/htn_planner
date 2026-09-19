@@ -1,0 +1,46 @@
+(:include "Includes/Ninja.domain")
+
+(:domain EliteNinja top_level_domain
+    (:constants EliteNinjaConstants overrides Ninja
+        (combat_attack "elite_ninja_attack")
+    )
+
+    // Override the Ninja specialization again. Qualified axiom calls can
+    // explicitly reuse the implementation being specialized, just like a
+    // qualified compound method call does below.
+    (:axiom (can_use_special_attack ?inp_threat) overrides EnemyBase
+        (or
+            (#EnemyBase::can_use_special_attack ?inp_threat)
+            (elite_move_available)
+        )
+    )
+
+    (:method (do_combat ?inp_threat) overrides Ninja
+        (branch_elite_attack
+            (and
+                (#can_use_special_attack ?inp_threat)
+            )
+            (
+                (!attack @combat_attack ?inp_threat)
+            )
+        )
+
+        (branch_normal_ninja
+            (
+            )
+            (
+                (Ninja::do_combat ?inp_threat)
+            )
+        )
+    )
+
+    (:method (run) top_level_method
+        (branch_run
+            (
+            )
+            (
+                (do_combat 1)
+            )
+        )
+    )
+)

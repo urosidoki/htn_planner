@@ -1,0 +1,12 @@
+controlled_npc 1
+visible_enemy 1 201
+hostile_enemy 201
+enemy_distance 1 201 17
+visible_enemy 1 202
+hostile_enemy 202
+enemy_distance 1 202 3
+weapon_equipped 1 ranged
+weapon_available 1 melee
+health 1 85
+stamina 1 55
+

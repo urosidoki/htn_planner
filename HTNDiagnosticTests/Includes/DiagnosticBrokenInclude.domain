@@ -1,0 +1,11 @@
+(:domain DiagnosticBrokenInclude
+    (:method (included_action ?inp_target)
+        (branch_included
+            ()
+            (
+                (!attack ?missing_from_include)
+                (!move ?another_missing_from_include)
+            )
+        )
+    )
+)

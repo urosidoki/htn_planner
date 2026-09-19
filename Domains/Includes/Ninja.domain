@@ -1,0 +1,26 @@
+(:include "EnemyBase.domain")
+
+(:domain Ninja base
+    (:constants NinjaConstants overrides EnemyBase
+        (combat_attack "ninja_attack")
+    )
+
+    (:method (do_combat ?inp_threat) overrides EnemyBase
+        (branch_ninja_special_attack
+            (and
+                (ninja_move_available)
+            )
+            (
+                (!attack @combat_attack ?inp_threat)
+            )
+        )
+
+        (branch_base
+            (
+            )
+            (
+                (EnemyBase::do_combat ?inp_threat)
+            )
+        )
+    )
+)

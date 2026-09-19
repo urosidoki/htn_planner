@@ -1,0 +1,22 @@
+HTN Benchmark Baseline 0
+Profile / 20,000 iterations
+
+Idle           1.814 μs
+Combat         3.247 μs
+Emergency      2.804 μs
+Mobility       2.383 μs
+Recovery       2.147 μs
+
+FactHeavy100
+mean         203.162 μs
+p50          179.900 μs
+p95          341.200 μs
+p99          374.400 μs
+max          774.600 μs
+allocations      122 / plan
+
+Parallel FactHeavy100
+1T           4,782 plans/s
+2T           8,223 plans/s     1.72x
+4T          16,845 plans/s     3.52x
+8T          25,595 plans/s     5.35x

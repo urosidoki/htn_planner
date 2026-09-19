@@ -1,0 +1,205 @@
+HTN Language Support for Visual Studio Code — Instalación
+
+Requisitos
+
+Antes de empaquetar o instalar la extensión necesitas:
+
+-   Windows x64.
+-   Visual Studio con el workload Desktop development with C++ y
+    MSBuild.
+-   Node.js + npm.
+-   Visual Studio Code.
+-   El repositorio HTN con HTN.sln y la carpeta HTNVSCode.
+
+Puedes comprobar Node.js y npm desde PowerShell:
+
+    node --version
+    npm --version
+
+Si alguno de los dos comandos no existe, instala Node.js (versión LTS) y
+vuelve a abrir la terminal.
+
+También es recomendable comprobar que el comando de VS Code está
+disponible:
+
+    code --version
+
+1. Compilar HTNLanguageServer en Release x64
+
+Abre HTN.sln en Visual Studio.
+
+Selecciona:
+
+    Configuration: Release
+    Platform: x64
+
+Después:
+
+    Solution Explorer
+      -> HTNLanguageServer
+      -> Right click
+      -> Rebuild
+
+El executable esperado es:
+
+    <HTN>\bin\Release-windows-x86_64\HTNLanguageServer\HTNLanguageServer.exe
+
+Nota: PackageVSIX.bat vuelve a compilar automáticamente
+HTNLanguageServer en Release x64 antes de empaquetar. El rebuild manual
+es útil para comprobar previamente que el Language Server compila
+correctamente.
+
+2. Generar el VSIX
+
+Abre una terminal en:
+
+    <HTN>\HTNVSCode
+
+La forma más sencilla es ejecutar:
+
+    PackageVSIX.bat
+
+También puedes hacer doble clic sobre PackageVSIX.bat desde Explorer.
+
+El script realiza automáticamente:
+
+1.  Localiza MSBuild mediante vswhere o PATH.
+2.  Compila HTNLanguageServer en Release | x64.
+3.  Copia HTNLanguageServer.exe dentro de HTNVSCode\server\win32-x64.
+4.  Copia las DLL necesarias que estén junto al Language Server.
+5.  Ejecuta npm ci.
+6.  Ejecuta vsce package.
+7.  Genera un VSIX autocontenido para Windows x64.
+
+Si PowerShell bloquea scripts, PackageVSIX.bat ya invoca el script con:
+
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File package-vsix.ps1
+
+También puedes ejecutar directamente:
+
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\package-vsix.ps1
+
+3. Instalar la extensión
+
+Después de empaquetar aparecerá en HTNVSCode un fichero similar a:
+
+    htn-language-support-0.4.1-win32-x64.vsix
+
+Instálalo desde PowerShell:
+
+    code --install-extension ".\htn-language-support-0.4.1-win32-x64.vsix" --force
+
+Alternativamente, desde Visual Studio Code:
+
+    Ctrl+Shift+P
+    -> Extensions: Install from VSIX...
+    -> seleccionar el .vsix generado
+
+Después de instalar o actualizar la extensión, cierra todas las ventanas
+de VS Code y vuelve a abrirlo, o ejecuta:
+
+    Ctrl+Shift+P
+    -> Developer: Reload Window
+
+4. Usar HTN en VS Code
+
+Abre cualquier fichero .domain.
+
+La extensión arrancará automáticamente el HTNLanguageServer.exe incluido
+dentro del VSIX. No es necesario ejecutar manualmente el servidor ni
+usar Extension Development Host/F5.
+
+Para compilar el domain activo:
+
+    F7
+
+También puedes usar:
+
+    Ctrl+Shift+P
+    -> HTN: Compile Active Domain
+
+Si la compilación falla:
+
+-   VS Code abre automáticamente Problems.
+-   Los errores aparecen como diagnostics rojos.
+-   Los tokens/rangos afectados aparecen subrayados en rojo.
+-   Puedes hacer clic en un error de Problems para navegar a su
+    ubicación.
+-   Los errores de includes aparecen asociados al .domain
+    correspondiente.
+
+Si la compilación termina correctamente:
+
+-   VS Code abre automáticamente Output.
+-   Selecciona el canal HTN para ver el resultado de compilación.
+
+5. Actualizar la extensión después de modificar HTN
+
+Cada vez que cambies el Language Server o la extensión:
+
+    1. Guardar los cambios.
+    2. Ejecutar HTNVSCode\PackageVSIX.bat.
+    3. Instalar el nuevo VSIX con --force.
+    4. Recargar o reiniciar VS Code.
+
+Ejemplo:
+
+    cd C:\Development\shareisevolve\HTN\HTNVSCode
+    .\PackageVSIX.bat
+    code --install-extension ".\htn-language-support-0.4.1-win32-x64.vsix" --force
+
+6. Solución de problemas
+
+node o npm no se reconoce
+
+Instala Node.js LTS, cierra la terminal y abre una nueva.
+
+Comprueba:
+
+    node --version
+    npm --version
+
+MSBuild.exe was not found
+
+Instala Visual Studio con el workload:
+
+    Desktop development with C++
+
+El empaquetador intenta localizar MSBuild automáticamente mediante
+vswhere.
+
+Method not found: htn/compile
+
+Normalmente significa que VS Code está ejecutando un Language Server
+antiguo.
+
+Solución:
+
+    1. Ejecutar PackageVSIX.bat de nuevo.
+    2. Comprobar que el VSIX contiene server\win32-x64\HTNLanguageServer.exe.
+    3. Reinstalar el VSIX con --force.
+    4. Cerrar completamente VS Code.
+    5. Volver a abrirlo.
+
+Comprobar qué extensión está instalada
+
+Abre Extensions y busca:
+
+    HTN Language Support
+
+Comprueba que la versión coincide con el VSIX recién generado.
+
+Flujo habitual
+
+Una vez instalado, para trabajar diariamente no hay que hacer nada
+especial:
+
+    Abrir VS Code
+        -> abrir un .domain
+        -> editar
+        -> F7
+        -> errores: Problems
+           éxito: Output
+
+Solo necesitas regenerar/reinstalar el VSIX cuando cambie el propio
+Language Server o la extensión.

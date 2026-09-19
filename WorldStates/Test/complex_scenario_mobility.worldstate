@@ -1,0 +1,7 @@
+controlled_entity 7
+health_value 7 50
+speed_value 7 1.0
+
+objective_far 7
+path_open 7
+route_clear 7 "route_A"

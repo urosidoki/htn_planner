@@ -1,0 +1,91 @@
+(:include "Includes/movement2.domain")
+
+(:domain Wanderer top_level_domain
+
+    // A Wanderer is deliberately simple: while it has a destination it moves
+    // there using the shared asynchronous movement domain. When the simulation
+    // marks it as interacting, the plan becomes the contextual animation that
+    // belongs to its current location.
+    (:method (run) top_level_method
+
+        (branch_contextual_animation
+            (and
+                (wanderer_state contextual)
+                (wanderer_location ?location)
+                (contextual_animation_at ?location ?animation)
+            )
+            (
+                (!play_contextual_animation ?animation ?location)
+            )
+        )
+
+        (branch_walking
+            (and
+                (wanderer_state walking)
+                (wanderer_location ?from_location)
+                (wanderer_destination ?to_location)
+            )
+            (
+                (move_to_async ?from_location ?to_location)
+                (#talk_about_destination)
+                (!after_destination_comment)
+            )
+        )
+
+        (branch_fallback
+            (
+            )
+            (
+                (!wanderer_idle)
+            )
+        )
+    )
+
+    // Deliberately deferred until execution reaches this point. By then the
+    // wanderer has completed move_to_async, so this method observes the fresh
+    // current location rather than the location that existed when run was planned.
+    (:method (talk_about_destination)
+
+        (branch_both_even
+            (and
+                (wanderer_location ?location)
+                (call both_coordinates_even ?location)
+            )
+            (
+                (!say "Both coordinates are even!")
+            )
+        )
+
+        (branch_both_odd
+            (and
+                (wanderer_location ?location)
+                (call both_coordinates_odd ?location)
+            )
+            (
+                (!say "Both coordinates are odd!")
+            )
+        )
+
+        (branch_mixed
+            (and
+                (wanderer_location ?location)
+            )
+            (
+                (!say "One coordinate is even and the other is odd!")
+            )
+        )
+    )
+
+    // movement exposes this as a specialization point. In a real game this
+    // task would normally correspond to yielding until the async query changes
+    // state and causes the actor to replan.
+    (:method (do_wait_for_pathfinding_query) overrides movement
+        (branch_wait
+            (
+            )
+            (
+                (!wait_for_pathfinding_query)
+            )
+        )
+    )
+)

@@ -1,0 +1,97 @@
+(:domain combat_reactions
+
+    (:axiom (is_threat ?inp_entity ?out_enemy)
+        (and
+            (or
+                (enemy_visible ?inp_entity ?out_enemy)
+                (enemy_recently_seen ?inp_entity ?out_enemy)
+            )
+            (enemy_hostile ?out_enemy)
+        )
+    )
+
+    (:axiom (can_engage ?inp_entity ?inp_enemy)
+        (and
+            (alt
+                (has_weapon ?inp_entity)
+                (has_backup_weapon ?inp_entity)
+            )
+            (ammo_available ?inp_entity)
+            (not (weapon_jammed ?inp_entity))
+            (not (enemy_invulnerable ?inp_enemy))
+        )
+    )
+
+    (:method (emergency_response ?inp_entity ?inp_enemy)
+
+        (branch_take_cover_and_fight
+            (and
+                (cover_available ?inp_entity ?cover)
+                (not (cover_compromised ?cover))
+                (#can_engage ?inp_entity ?inp_enemy)
+            )
+            (
+                (!move_to_cover ?cover)
+                (combat_response ?inp_entity ?inp_enemy)
+            )
+        )
+
+        (branch_retreat
+            (and
+                (retreat_route ?inp_entity ?route)
+                (not (route_blocked ?route))
+            )
+            (
+                (!retreat ?route)
+            )
+        )
+
+        (branch_emergency_fallback
+            (
+            )
+            (
+                (!log "Emergency fallback")
+            )
+        )
+    )
+
+    (:method (combat_response ?inp_entity ?inp_enemy)
+
+        (branch_attack
+            (and
+                (or
+                    (has_weapon ?inp_entity)
+                    (has_backup_weapon ?inp_entity)
+                )
+                (ammo_available ?inp_entity)
+                (not (weapon_jammed ?inp_entity))
+                (not (enemy_invulnerable ?inp_enemy))
+                (call binded_function_with_args "attacking enemy")
+            )
+            (
+                (!aim ?inp_enemy)
+                (!fire ?inp_enemy)
+            )
+        )
+
+        (branch_reload
+            (and
+                (has_weapon ?inp_entity)
+                (not (ammo_available ?inp_entity))
+                (ammo_reserve ?inp_entity)
+            )
+            (
+                (!reload ?inp_entity)
+            )
+        )
+
+        (branch_disengage
+            (
+            )
+            (
+                (!disengage ?inp_enemy)
+            )
+        )
+    )
+
+)

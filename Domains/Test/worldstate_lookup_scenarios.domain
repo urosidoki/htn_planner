@@ -1,0 +1,57 @@
+(:domain WorldstateLookupScenarios top_level_domain
+
+    (:axiom (has_combat_context ?inp_entity ?inp_target)
+        (and
+            (target_status ?inp_target 1)
+            (entity_weapon ?inp_entity ?weapon)
+            (weapon_status ?weapon 1)
+            (ammo_available ?inp_entity)
+        )
+    )
+
+    (:method (run_scenario) top_level_method
+        (branch_active
+            (and
+                (active_entity ?entity)
+                (entity_state ?entity ?state)
+                (entity_target ?entity ?target)
+                (entity_squad ?entity ?squad)
+            )
+            (
+                (evaluate_entity ?entity ?state ?target ?squad)
+            )
+        )
+
+        (branch_idle
+            (
+            )
+            (
+                (!idle)
+            )
+        )
+    )
+
+    (:method (evaluate_entity ?inp_entity ?inp_state ?inp_target ?inp_squad)
+        (branch_combat
+            (and
+                (#has_combat_context ?inp_entity ?inp_target)
+                (squad_order ?inp_squad ?order)
+                (entity_cover ?inp_entity ?cover)
+                (cover_quality ?cover ?quality)
+                (entity_route ?inp_entity ?route)
+                (route_status ?route 1)
+            )
+            (
+                (!engage ?inp_entity ?inp_target ?inp_state ?order ?quality ?route)
+            )
+        )
+
+        (branch_fallback
+            (
+            )
+            (
+                (!observe ?inp_entity ?inp_target)
+            )
+        )
+    )
+)

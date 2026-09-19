@@ -1,0 +1,132 @@
+(:domain AtomListDemo top_level_domain
+
+    (:constants AtomListDemoConstants
+        (demo_list (patrol 3 true (10.0 20.0 30.0)))
+        (split_list_input ("one" "two" "three"))
+        (split_list_single ("only"))
+    )
+
+    (:method (show_atom_list) top_level_method
+        (print_constant_list
+            (and
+                (?added (call list_add @demo_list "return"))
+                (?removed (call list_remove_at ?added 1))
+                (?element (call list_get ?removed 2))
+                (?size (call list_size ?added))
+                (?cleared (call list_clear ?removed))
+            )
+            (
+                (!print_original @demo_list)
+                (!print_added ?added)
+                (!print_removed ?removed)
+                (!print_element ?element)
+                (!print_size ?size)
+                (!print_cleared ?cleared)
+            )
+        )
+    )
+
+    (:method (split_list_basic) top_level_method
+        (split
+            (and
+                (split_list @split_list_input ?head ?tail)
+            )
+            (
+                (!split_result ?head ?tail)
+            )
+        )
+    )
+
+    (:method (split_list_single_element) top_level_method
+        (split
+            (and
+                (split_list @split_list_single ?head ?tail)
+            )
+            (
+                (!split_single_result ?head ?tail)
+            )
+        )
+    )
+
+    (:method (split_list_empty_fails) top_level_method
+        (unexpected
+            (and
+                (?empty (call list_clear @split_list_single))
+                (split_list ?empty ?head ?tail)
+            )
+            (
+                (!unexpected_split ?head ?tail)
+            )
+        )
+        (expected
+            ()
+            (
+                (!empty_list_rejected)
+            )
+        )
+    )
+
+    (:method (split_list_bound_outputs) top_level_method
+        (compatible
+            (and
+                (split_list @split_list_input "one" ("two" "three"))
+            )
+            (
+                (!bound_outputs_match)
+            )
+        )
+    )
+
+    (:method (split_list_rollback) top_level_method
+        (fails_after_binding
+            (and
+                (split_list @split_list_input ?head ?tail)
+                (== ?head "wrong")
+            )
+            (
+                (!unexpected_first_branch)
+            )
+        )
+        (reuses_same_variables
+            (and
+                (split_list @split_list_single ?head ?tail)
+            )
+            (
+                (!rollback_result ?head ?tail)
+            )
+        )
+    )
+    (:method (split_list_front_basic) top_level_method
+        (split
+            (and
+                (split_list_front @split_list_input ?element ?remainder)
+            )
+            (
+                (!split_front_result ?element ?remainder)
+            )
+        )
+    )
+
+    (:method (split_list_back_basic) top_level_method
+        (split
+            (and
+                (split_list_back @split_list_input ?remainder ?element)
+            )
+            (
+                (!split_back_result ?element ?remainder)
+            )
+        )
+    )
+
+    (:method (split_list_back_bound_outputs) top_level_method
+        (compatible
+            (and
+                (split_list_back @split_list_input ("one" "two") "three")
+            )
+            (
+                (!split_back_bound_outputs_match)
+            )
+        )
+    )
+
+)

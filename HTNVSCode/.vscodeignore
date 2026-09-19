@@ -1,0 +1,6 @@
+.vscode/**
+node_modules/.cache/**
+*.vsix
+package-vsix.ps1
+.gitignore
+PackageVSIX.bat

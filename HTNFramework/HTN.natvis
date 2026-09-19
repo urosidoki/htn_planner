@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Visual Studio debugger views for the C-compatible HTN atom types. -->
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+  <Type Name="HtnSymbol">
+    <DisplayString>{mText}</DisplayString>
+    <Expand>
+      <Item Name="Text">mText</Item>
+      <Item Name="Hash">mHash</Item>
+      <Item Name="ID">mID</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="HTNAtomList">
+    <DisplayString>{{size={size}}}</DisplayString>
+    <Expand>
+      <Item Name="[Size]">size</Item>
+      <LinkedListItems>
+        <Size>size</Size>
+        <HeadPointer>head_node</HeadPointer>
+        <NextPointer>next_node</NextPointer>
+        <ValueNode>data</ValueNode>
+      </LinkedListItems>
+    </Expand>
+  </Type>
+
+  <Type Name="HTNAtom">
+    <DisplayString Condition="type == 0">Unbound</DisplayString>
+    <DisplayString Condition="type == 1">Bool: {value.bool_value != 0}</DisplayString>
+    <DisplayString Condition="type == 2">Int: {value.int_value}</DisplayString>
+    <DisplayString Condition="type == 3">Float: {value.float_value,g}</DisplayString>
+    <DisplayString Condition="type == 4">String: {value.string_value.data,s}</DisplayString>
+    <DisplayString Condition="type == 5 &amp;&amp; value.symbol_value != 0">Symbol: {*((HtnSymbol*)value.symbol_value)}</DisplayString>
+    <DisplayString Condition="type == 5 &amp;&amp; value.symbol_value == 0">Symbol: null</DisplayString>
+    <DisplayString Condition="type == 6">List: {value.list_value}</DisplayString>
+    <Expand>
+      <Item Name="[Type]">type</Item>
+      <Item Name="[Value]" Condition="type == 1">value.bool_value != 0</Item>
+      <Item Name="[Value]" Condition="type == 2">value.int_value</Item>
+      <Item Name="[Value]" Condition="type == 3">value.float_value</Item>
+      <Item Name="[Value]" Condition="type == 4">value.string_value.data,s</Item>
+      <Item Name="[Size]" Condition="type == 4">value.string_value.size</Item>
+      <Item Name="[Capacity]" Condition="type == 4">value.string_value.capacity</Item>
+      <Item Name="[Value]" Condition="type == 5 &amp;&amp; value.symbol_value != 0">*((HtnSymbol*)value.symbol_value)</Item>
+      <Item Name="[Value]" Condition="type == 6">value.list_value</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="HTNAtomOwner">
+    <DisplayString Condition="((HTNAtom*)mStorage)->type == 0">Unbound</DisplayString>
+    <DisplayString Condition="((HTNAtom*)mStorage)->type == 1">Bool: {((HTNAtom*)mStorage)->value.bool_value != 0}</DisplayString>
+    <DisplayString Condition="((HTNAtom*)mStorage)->type == 2">Int: {((HTNAtom*)mStorage)->value.int_value}</DisplayString>
+    <DisplayString Condition="((HTNAtom*)mStorage)->type == 3">Float: {((HTNAtom*)mStorage)->value.float_value,g}</DisplayString>
+    <DisplayString Condition="((HTNAtom*)mStorage)->type == 4">String: {((HTNAtom*)mStorage)->value.string_value.data,s}</DisplayString>
+    <DisplayString Condition="((HTNAtom*)mStorage)->type == 5 &amp;&amp; ((HTNAtom*)mStorage)->value.symbol_value != 0">Symbol: {*((HtnSymbol*)((HTNAtom*)mStorage)->value.symbol_value)}</DisplayString>
+    <DisplayString Condition="((HTNAtom*)mStorage)->type == 5 &amp;&amp; ((HTNAtom*)mStorage)->value.symbol_value == 0">Symbol: null</DisplayString>
+    <DisplayString Condition="((HTNAtom*)mStorage)->type == 6">List: {((HTNAtom*)mStorage)->value.list_value}</DisplayString>
+    <Expand>
+      <ExpandedItem>*(HTNAtom*)mStorage</ExpandedItem>
+    </Expand>
+  </Type>
+
+</AutoVisualizer>

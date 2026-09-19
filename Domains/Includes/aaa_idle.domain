@@ -1,0 +1,47 @@
+(:domain aaa_idle
+    (:method (idle_tick ?inp_npc)
+        (injury_care
+            (and (health ?inp_npc ?hp) (<= ?hp 45)
+                 (medkit_available ?inp_npc))
+            ((!use_medkit ?inp_npc)
+             (!check_equipment ?inp_npc))
+        )
+        (resupply_ammo
+            (and (ammo ?inp_npc ?count) (<= ?count 5)
+                 (ammo_cache ?inp_npc ?cache))
+            ((!move_to_supply ?inp_npc ?cache)
+             (!resupply_ammo ?inp_npc ?cache))
+        )
+        (repair_weapon
+            (and (weapon_jammed ?inp_npc ?weapon))
+            ((!clear_weapon_jam ?inp_npc ?weapon)
+             (!check_equipment ?inp_npc))
+        )
+        (patrol
+            (and (patrol_route ?inp_npc ?route) (patrol_checkpoint ?inp_npc ?point))
+            ((!follow_patrol_route ?inp_npc ?route)
+             (!inspect_checkpoint ?inp_npc ?point)
+             (!report_patrol_progress ?inp_npc ?point))
+        )
+        (socialize
+            (and (nearby_ally ?inp_npc ?ally) (social_cooldown_ready ?inp_npc))
+            ((!greet_ally ?inp_npc ?ally)
+             (!exchange_status ?inp_npc ?ally))
+        )
+        (guard_post
+            (and (assigned_post ?inp_npc ?post))
+            ((!move_to_guard_post ?inp_npc ?post)
+             (!watch_post ?inp_npc ?post))
+        )
+        (rest
+            (and (stamina ?inp_npc ?amount) (<= ?amount 25))
+            ((!rest_briefly ?inp_npc)
+             (!check_surroundings ?inp_npc))
+        )
+        (ambient_idle
+            ()
+            ((!play_idle_animation ?inp_npc)
+             (!check_surroundings ?inp_npc))
+        )
+    )
+)

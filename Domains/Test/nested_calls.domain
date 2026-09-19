@@ -1,0 +1,46 @@
+(:domain NestedCallsDemo top_level_domain
+
+    (:method (test_nested_calls) top_level_method
+
+        (branch_nested_calls
+            (
+            )
+            (
+                // Expected depth-first, left-to-right evaluation:
+                // inc(1), inc(2), inc(3), inc(4), mul(3,5), add(2,15) => 17
+                (!capture
+                    (call add
+                        (call inc 1)
+                        (call mul
+                            (call inc 2)
+                            (call inc (call inc 3))
+                        )
+                    )
+                )
+
+                // The nested expression is a compound-task argument. Expected order:
+                // inc(4), inc(5), inc(6), inc(7), add(6,8), add(5,14) => 19
+                (consume_nested
+                    (call add
+                        (call inc 4)
+                        (call add
+                            (call inc 5)
+                            (call inc (call inc 6))
+                        )
+                    )
+                )
+            )
+        )
+    )
+
+    (:method (consume_nested ?inp_value)
+
+        (branch_consume
+            (
+            )
+            (
+                (!capture ?inp_value)
+            )
+        )
+    )
+)

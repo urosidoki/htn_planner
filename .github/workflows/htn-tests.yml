@@ -1,0 +1,78 @@
+name: HTN Build and Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: htn-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test (${{ matrix.configuration }})
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Profile, Release]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate Visual Studio solution
+        shell: powershell
+        run: |
+          & ".\ThirdParty\premake\bin\premake5.exe" vs2022
+
+          if ($LASTEXITCODE -ne 0) {
+              throw "Premake failed with exit code $LASTEXITCODE"
+          }
+
+          if (-not (Test-Path ".\HTN.sln")) {
+              throw "Premake did not generate HTN.sln"
+          }
+
+      - name: Restore and build HTNTest
+        shell: powershell
+        run: |
+          msbuild ".\HTN.sln" `
+            /m `
+            /restore `
+            /t:HTNTest `
+            /p:Configuration=${{ matrix.configuration }} `
+            /p:Platform=x64 `
+            /p:RestorePackagesConfig=true
+
+          if ($LASTEXITCODE -ne 0) {
+              throw "MSBuild failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Run HTN tests
+        shell: powershell
+        working-directory: HTNTest
+        run: |
+          $Config = "${{ matrix.configuration }}"
+          $TestExecutable = "..\bin\${Config}-windows-x86_64\HTNTest\HTNTest.exe"
+
+          if (-not (Test-Path $TestExecutable)) {
+            Write-Error "HTNTest executable not found at $TestExecutable"
+            exit 1
+          }
+
+          & $TestExecutable --gtest_color=yes
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "HTNTest failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }

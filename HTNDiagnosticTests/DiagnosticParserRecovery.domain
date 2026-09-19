@@ -1,0 +1,18 @@
+(:domain DiagnosticParserRecovery top_level_domain
+    // Error sintactico recuperable intencionado:
+    (:constants BrokenConstants
+        (broken_value)
+    )
+
+    // El parser debe recuperarse y encontrar tambien estos errores semanticos.
+    (:method (run ?inp_target) top_level_method
+        (branch_test
+            ()
+            (
+                (!attack ?missing_target)
+                (!move ?missing_destination)
+                (method_that_does_not_exist ?inp_target)
+            )
+        )
+    )
+)

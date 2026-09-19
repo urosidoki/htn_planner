@@ -1,0 +1,16 @@
+controlled_entity 7
+health_value 7 50
+speed_value 7 1.0
+
+enemy_visible 7 101
+enemy_hostile 101
+critical_threat 101
+enemy_close 101
+
+has_weapon 7
+ammo_available 7
+cover_available 7 "cover_A"
+
+objective_far 7
+path_open 7
+route_clear 7 "route_A"

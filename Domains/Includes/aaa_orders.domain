@@ -1,0 +1,49 @@
+(:domain aaa_orders
+    // Orders are data. The root domain decides when each priority may run.
+    (:method (execute_scripted_order ?inp_npc ?inp_order ?inp_target)
+        (evacuate_under_fire
+            (and (== ?inp_order evacuate) (under_fire ?inp_npc))
+            ((!mark_order_started ?inp_npc ?inp_order)
+             (!deploy_smoke ?inp_npc)
+             (!move_to_order_target ?inp_npc ?inp_target)
+             (!mark_order_complete ?inp_npc ?inp_order))
+        )
+        (evacuate
+            (and (== ?inp_order evacuate))
+            ((!mark_order_started ?inp_npc ?inp_order)
+             (!move_to_order_target ?inp_npc ?inp_target)
+             (!mark_order_complete ?inp_npc ?inp_order))
+        )
+        (hold_position
+            (and (== ?inp_order hold))
+            ((!mark_order_started ?inp_npc ?inp_order)
+             (!face_order_target ?inp_npc ?inp_target)
+             (!hold_position ?inp_npc ?inp_target))
+        )
+        (escort
+            (and (== ?inp_order escort) (escort_route ?inp_npc ?inp_target ?route))
+            ((!mark_order_started ?inp_npc ?inp_order)
+             (!follow_escort_route ?inp_npc ?inp_target ?route))
+        )
+        (guard
+            (and (== ?inp_order guard))
+            ((!mark_order_started ?inp_npc ?inp_order)
+             (!guard_target ?inp_npc ?inp_target))
+        )
+        (interact
+            (and (== ?inp_order interact) (interaction_ready ?inp_target))
+            ((!move_to_order_target ?inp_npc ?inp_target)
+             (!interact_with ?inp_npc ?inp_target)
+             (!mark_order_complete ?inp_npc ?inp_order))
+        )
+        (move
+            (and (== ?inp_order move))
+            ((!move_to_order_target ?inp_npc ?inp_target)
+             (!mark_order_complete ?inp_npc ?inp_order))
+        )
+        (unknown_order
+            ()
+            ((!report_invalid_order ?inp_npc ?inp_order ?inp_target))
+        )
+    )
+)

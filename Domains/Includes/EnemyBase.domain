@@ -1,0 +1,23 @@
+(:domain EnemyBase base
+    (:constants EnemyBaseConstants base
+        (combat_attack "normal_attack")
+    )
+
+    // Base axiom that can be specialized by derived enemy domains.
+    // The base enemy can always use its normal attack.
+    (:axiom (can_use_special_attack ?inp_threat) base
+        (
+        )
+    )
+
+    (:method (do_combat ?inp_threat) base
+        (branch_base_attack
+            (and
+                (#can_use_special_attack ?inp_threat)
+            )
+            (
+                (!attack @combat_attack ?inp_threat)
+            )
+        )
+    )
+)
