@@ -1,11 +1,21 @@
 param([string]$BuildRoot)
 $ErrorActionPreference = 'Stop'
 if (-not $BuildRoot) { $BuildRoot = Join-Path ([IO.Path]::GetTempPath()) ('htn-sdk-validation-' + [guid]::NewGuid().ToString('N')) }
+function Get-Sha256([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
 $manifest = Get-Content "$PSScriptRoot/manifest.json" -Raw | ConvertFrom-Json
 foreach ($line in Get-Content "$PSScriptRoot/CHECKSUMS.sha256") {
     if ($line -notmatch '^([0-9a-f]{64})  (.+)$') { throw 'Invalid checksum entry' }
     $expected = $Matches[1]; $relative = $Matches[2]
-    if ((Get-FileHash -LiteralPath (Join-Path $PSScriptRoot $relative) -Algorithm SHA256).Hash -ne $expected) { throw "Checksum mismatch: $relative" }
+    if ((Get-Sha256 (Join-Path $PSScriptRoot $relative)) -ne $expected) { throw "Checksum mismatch: $relative" }
 }
 foreach ($variant in $manifest.variants) {
     $id = $variant.id

@@ -6,6 +6,7 @@
 - [SDK variants](SDK_VARIANTS.md)
 - [SDK distribution](DISTRIBUTION.md)
 - [Release checklist](RELEASE_CHECKLIST.md)
+- [1.1.0 release notes](RELEASE_NOTES_1.1.0.md)
 - [1.0.0 release notes](RELEASE_NOTES_1.0.0.md)
 
 The root [README](../README.md) contains the quick start, domain example, build

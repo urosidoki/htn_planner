@@ -17,6 +17,16 @@ function Copy-PackageFile([string]$Source, [string]$Relative) {
     New-Item -ItemType Directory -Force -Path (Split-Path $destination) | Out-Null
     Copy-Item -LiteralPath $Source -Destination $destination
 }
+function Get-Sha256([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
 function Read-Abi([string]$Header, [string]$Macro, [bool]$Instrumented) {
     $values = [regex]::Matches((Get-Content -LiteralPath $Header -Raw), "#define\s+$Macro\s+UINT32_C\((0x[0-9A-Fa-f]+)\)")
     if ($values.Count -ne 4) { throw "Unexpected ABI definitions: $Header" }
@@ -112,7 +122,7 @@ $manifest = [ordered]@{
 $manifest | ConvertTo-Json -Depth 8 | Set-Content "$OutputDirectory/manifest.json" -Encoding UTF8
 Get-ChildItem $OutputDirectory -Recurse -File | Where-Object Name -ne 'CHECKSUMS.sha256' | Sort-Object FullName | ForEach-Object {
     $relative = $_.FullName.Substring($OutputDirectory.Length).TrimStart('\','/').Replace('\','/')
-    '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $relative
+    '{0}  {1}' -f (Get-Sha256 $_.FullName), $relative
 } | Set-Content "$OutputDirectory/CHECKSUMS.sha256" -Encoding ASCII
 Compress-Archive -LiteralPath $OutputDirectory -DestinationPath $ArchivePath -CompressionLevel Optimal
 Write-Host "SDK package: $ArchivePath"
