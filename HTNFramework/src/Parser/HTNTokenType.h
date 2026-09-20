@@ -24,6 +24,14 @@ enum class HTNTokenType : uint8
     GREATER,
     GREATER_EQUAL,
 
+    PLUS,
+    MINUS,
+    INCREMENT,
+    DECREMENT,
+    MULTIPLY,
+    DIVIDE,
+    MODULO,
+
     // Keywords
     HTN_DOMAIN,
     HTN_TOP_LEVEL_DOMAIN,

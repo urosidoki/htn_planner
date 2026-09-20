@@ -65,6 +65,16 @@ std::string FormatDomainValueExpression(const AST::Value& inNode)
         Result += ")";
         return Result;
     }
+    case AST::ValueKind::Arithmetic:
+    {
+        static constexpr const char* Operators[] = {"+", "-", "*", "/", "%", "++", "--"};
+        const uint32 Operator = static_cast<uint32>(inNode.GetArithmeticOperator());
+        std::string Result = "(" + std::string(Operator < 7u ? Operators[Operator] : "?");
+        for (const auto& Operand : inNode.GetArithmeticOperandNodes())
+            Result += " " + FormatDomainValueExpression(*Operand);
+        Result += ")";
+        return Result;
+    }
     default:
         return HTNAtomToString(Value, true);
     }
@@ -142,6 +152,7 @@ HTNIRValueKind LowerValueKind(AST::ValueKind inKind)
     case AST::ValueKind::Variable: return HTNIRValueKind::Variable;
     case AST::ValueKind::Constant: return HTNIRValueKind::Constant;
     case AST::ValueKind::Call: return HTNIRValueKind::Call;
+    case AST::ValueKind::Arithmetic: return HTNIRValueKind::Arithmetic;
     }
     return HTNIRValueKind::Literal;
 }
@@ -299,6 +310,19 @@ public:
             !Strings.Values[Record.Text].starts_with("any_"))
         {
             Record.VariableSlot = AllocateVariableSlot(Record.Text);
+        }
+        if (Record.Kind == HTNIRValueKind::Arithmetic)
+        {
+            Record.ArithmeticExpression = static_cast<uint32>(ArithmeticExpressions.size());
+            ArithmeticExpressions.emplace_back();
+            ArithmeticExpressions[Record.ArithmeticExpression].Operator =
+                static_cast<HTNIRArithmeticOperator>(inNode.GetArithmeticOperator());
+            ArithmeticExpressions[Record.ArithmeticExpression].Operands.reserve(inNode.GetArithmeticOperandNodes().size());
+            for (const auto& Operand : inNode.GetArithmeticOperandNodes())
+            {
+                ValueRecord OperandRecord = MakeValueRecord(*Operand);
+                ArithmeticExpressions[Record.ArithmeticExpression].Operands.push_back(std::move(OperandRecord));
+            }
         }
         return Record;
     }
@@ -640,7 +664,7 @@ bool ResolveCompileTimeReferences(Builder& ioBuilder)
     const auto AllocateStaticValue = [&ioBuilder](ValueRecord& Value)
     {
         Value.StaticValueIndex = kNoIndex;
-        if (Value.Kind == HTNIRValueKind::Variable)
+        if (Value.Kind == HTNIRValueKind::Variable || Value.Kind == HTNIRValueKind::Arithmetic)
             return;
         Value.StaticValueIndex = static_cast<uint32>(ioBuilder.StaticValues.size());
         StaticValueRecord StaticValue;

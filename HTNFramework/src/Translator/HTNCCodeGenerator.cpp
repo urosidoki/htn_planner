@@ -827,7 +827,9 @@ bool TryEvaluateStaticBuiltinComparison(const HTNCompilerIR& inBuilder, const Co
 
     const ValueRecord* Left = ResolveGeneratedStaticValue(inBuilder, inCondition.FirstArgument);
     const ValueRecord* Right = ResolveGeneratedStaticValue(inBuilder, inCondition.FirstArgument + 1u);
-    if (!Left || !Right || Left->Kind == HTNIRValueKind::Variable || Right->Kind == HTNIRValueKind::Variable)
+    if (!Left || !Right ||
+        Left->Kind == HTNIRValueKind::Variable || Right->Kind == HTNIRValueKind::Variable ||
+        Left->Kind == HTNIRValueKind::Arithmetic || Right->Kind == HTNIRValueKind::Arithmetic)
         return false;
 
     const bool LeftNumeric = Left->AtomType == HTN_ATOM_TYPE_INT || Left->AtomType == HTN_ATOM_TYPE_FLOAT;
@@ -922,6 +924,60 @@ std::string BuildGeneratedValueAtomReference(const HTNCompilerIR& inBuilder,
     }
     return "&" + inDomainSymbol + "_PREPARED(context)->values[" +
            std::to_string(Value.StaticValueIndex) + "u]";
+}
+
+std::string EmitGeneratedArithmeticValue(CodeWriter& W,
+                                         const HTNCompilerIR& B,
+                                         const ValueRecord& inValue,
+                                         const std::string& inDomainSymbol,
+                                         const std::string& inBaseName,
+                                         const std::string& inIndent,
+                                         uint32& ioTemporary)
+{
+    if (inValue.Kind == HTNIRValueKind::Variable)
+    {
+        if (inValue.VariableSlot == kNoIndex) return "NULL";
+        return "HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, " +
+            std::to_string(inValue.VariableSlot) + "u)";
+    }
+    if (inValue.Kind == HTNIRValueKind::Constant)
+    {
+        const auto It = std::find_if(B.Constants.begin(), B.Constants.end(),
+            [&inValue](const ConstantRecord& Constant) { return Constant.Id == inValue.Text; });
+        return It == B.Constants.end() ? "NULL" :
+            BuildGeneratedValueAtomReference(B, It->Value, inDomainSymbol);
+    }
+    if (inValue.Kind != HTNIRValueKind::Arithmetic)
+    {
+        const std::string Name = inBaseName + "_literal_" + std::to_string(ioTemporary++);
+        W.Out << inIndent << "HTNAtom " << Name << ";\n";
+        W.Out << inIndent << "HTNAtom_Init(&" << Name << ");\n";
+        if (inValue.AtomType == HTN_ATOM_TYPE_INT)
+            W.Out << inIndent << "HTNAtom_SetInt(&" << Name << ", " << inValue.IntValue << ");\n";
+        else if (inValue.AtomType == HTN_ATOM_TYPE_FLOAT)
+            W.Out << inIndent << "HTNAtom_SetFloat(&" << Name << ", " << FormatCFloatLiteral(inValue.FloatValue) << ");\n";
+        return "&" + Name;
+    }
+    if (inValue.ArithmeticExpression >= B.ArithmeticExpressions.size())
+        return "NULL";
+
+    const HTNIRArithmeticExpression& Expression = B.ArithmeticExpressions[inValue.ArithmeticExpression];
+    const std::string Name = inBaseName + "_expression_" + std::to_string(ioTemporary++);
+    std::vector<std::string> Operands;
+    Operands.reserve(Expression.Operands.size());
+    for (const ValueRecord& Operand : Expression.Operands)
+        Operands.push_back(EmitGeneratedArithmeticValue(W, B, Operand, inDomainSymbol, inBaseName, inIndent, ioTemporary));
+    W.Out << inIndent << "const HTNAtom* " << Name << "_operands[" << std::max<size_t>(1u, Operands.size()) << "u] = {";
+    for (size_t I = 0; I < Operands.size(); ++I)
+        W.Out << (I == 0u ? "" : ", ") << Operands[I];
+    if (Operands.empty()) W.Out << "NULL";
+    W.Out << "};\n";
+    W.Out << inIndent << "HTNAtom " << Name << ";\n";
+    W.Out << inIndent << "HTNAtom_Init(&" << Name << ");\n";
+    W.Out << inIndent << "const int " << Name << "_valid = " << inDomainSymbol << "_EVALUATE_ARITHMETIC("
+          << Name << "_operands, " << Operands.size() << "u, "
+          << static_cast<uint32>(Expression.Operator) << "u, &" << Name << ");\n";
+    return "(" + Name + "_valid ? &" + Name + " : NULL)";
 }
 
 
@@ -1381,9 +1437,19 @@ void EmitGeneratedConditionLeaf(CodeWriter& W, const HTNCompilerIR& B, const uin
         W.Out << "    HTN_GENERATED_EVENT_DEBUG_BEGIN_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition
               << "u, 0);\n";
 
+        uint32 ArithmeticTemporary = 0u;
+        const ValueRecord& LeftValue = B.Values[Condition.FirstArgument];
+        const ValueRecord& RightValue = B.Values[Condition.FirstArgument + 1u];
+        const std::string LeftReference = LeftValue.Kind == HTNIRValueKind::Arithmetic
+            ? EmitGeneratedArithmeticValue(W, B, LeftValue, inDomainSymbol,
+                                           "comparison_" + std::to_string(inCondition) + "_left", "    ", ArithmeticTemporary)
+            : BuildGeneratedValueAtomReference(B, Condition.FirstArgument, inDomainSymbol);
+        const std::string RightReference = RightValue.Kind == HTNIRValueKind::Arithmetic
+            ? EmitGeneratedArithmeticValue(W, B, RightValue, inDomainSymbol,
+                                           "comparison_" + std::to_string(inCondition) + "_right", "    ", ArithmeticTemporary)
+            : BuildGeneratedValueAtomReference(B, Condition.FirstArgument + 1u, inDomainSymbol);
         W.Out << "    if (" << inDomainSymbol << "_COMPARE_ATOMS("
-              << BuildGeneratedValueAtomReference(B, Condition.FirstArgument, inDomainSymbol) << ", "
-              << BuildGeneratedValueAtomReference(B, Condition.FirstArgument + 1u, inDomainSymbol) << ", "
+              << LeftReference << ", " << RightReference << ", "
               << BuiltinComparisonOperatorCName(Condition.Id) << ")) {\n";
 
 
@@ -1978,6 +2044,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     Out << "#include \"Core/HtnSymbolGenerated.h\"\n";
     Out << "#include \"WorldState/HTNGeneratedWorldState.h\"\n";
     Out << "#include \"Translator/HTNCallTermBridge.h\"\n";
+    Out << "#include <float.h>\n";
     Out << "\n";
     Out << "/* Generated control flow intentionally contains paths a compiler may prove unreachable. */\n";
     Out << "/* Keep warning suppression local so warnings-as-errors remain active for hand-written code. */\n";
@@ -2699,16 +2766,40 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     }
 
     bool NeedsBuiltinComparisonHelper = false;
+    bool NeedsArithmeticHelper = false;
     for (const ConditionRecord& Condition : B.Conditions)
     {
         if (Condition.Kind != HTN_CONDITION_BUILTIN_COMPARISON)
             continue;
+        if (Condition.ArgumentCount == 2u &&
+            (B.Values[Condition.FirstArgument].Kind == HTNIRValueKind::Arithmetic ||
+             B.Values[Condition.FirstArgument + 1u].Kind == HTNIRValueKind::Arithmetic))
+            NeedsArithmeticHelper = true;
         bool StaticResult = false;
         if (!TryEvaluateStaticBuiltinComparison(B, Condition, StaticResult))
-        {
             NeedsBuiltinComparisonHelper = true;
-            break;
-        }
+    }
+    if (NeedsArithmeticHelper)
+    {
+        Out << "static int " << DomainSymbol << "_EVALUATE_ARITHMETIC(const HTNAtom* const* operands, uint32_t count, uint32_t op, HTNAtom* result)\n{\n";
+        Out << "    uint32_t i; int use_float = 0; int64_t integer_result = 0; double float_result = 0.0;\n";
+        Out << "    if (!operands || !result || count == 0u) return 0;\n";
+        Out << "    for (i = 0u; i < count; ++i) { if (!operands[i] || !HTNAtom_IsBound(operands[i]) || (operands[i]->type != HTN_ATOM_TYPE_INT && operands[i]->type != HTN_ATOM_TYPE_FLOAT)) return 0; if (operands[i]->type == HTN_ATOM_TYPE_FLOAT) use_float = 1; }\n";
+        Out << "    if (op == 4u && (count != 2u || use_float)) return 0;\n";
+        Out << "    if (op == 5u || op == 6u) { double value; if (count != 1u) return 0; if (!use_float) { const int64_t incremented = (int64_t)operands[0]->value.int_value + (op == 5u ? 1 : -1); if (incremented < INT32_MIN || incremented > INT32_MAX) return 0; HTNAtom_SetInt(result, (int32_t)incremented); return 1; } value = (double)operands[0]->value.float_value + (op == 5u ? 1.0 : -1.0); if (value != value || value < -(double)FLT_MAX || value > (double)FLT_MAX) return 0; HTNAtom_SetFloat(result, (float)value); return 1; }\n";
+        Out << "    if (!use_float) {\n";
+        Out << "        integer_result = op == 2u ? 1 : (int64_t)operands[0]->value.int_value;\n";
+        Out << "        i = op == 2u ? 0u : 1u;\n";
+        Out << "        if (op == 1u && count == 1u) { integer_result = -(int64_t)operands[0]->value.int_value; i = count; }\n";
+        Out << "        for (; i < count; ++i) { const int64_t value = operands[i]->value.int_value; switch (op) { case 0u: integer_result += value; break; case 1u: integer_result -= value; break; case 2u: integer_result *= value; break; case 3u: if (value == 0) return 0; integer_result /= value; break; case 4u: if (value == 0) return 0; integer_result %= value; break; default: return 0; } if (integer_result < INT32_MIN || integer_result > INT32_MAX) return 0; }\n";
+        Out << "        HTNAtom_SetInt(result, (int32_t)integer_result); return 1;\n";
+        Out << "    }\n";
+        Out << "    float_result = op == 2u ? 1.0 : (operands[0]->type == HTN_ATOM_TYPE_INT ? (double)operands[0]->value.int_value : (double)operands[0]->value.float_value);\n";
+        Out << "    i = op == 2u ? 0u : 1u;\n";
+        Out << "    if (op == 1u && count == 1u) { float_result = -float_result; i = count; }\n";
+        Out << "    for (; i < count; ++i) { const double value = operands[i]->type == HTN_ATOM_TYPE_INT ? (double)operands[i]->value.int_value : (double)operands[i]->value.float_value; switch (op) { case 0u: float_result += value; break; case 1u: float_result -= value; break; case 2u: float_result *= value; break; case 3u: if (value == 0.0) return 0; float_result /= value; break; default: return 0; } if (float_result != float_result || float_result < -(double)FLT_MAX || float_result > (double)FLT_MAX) return 0; }\n";
+        Out << "    HTNAtom_SetFloat(result, (float)float_result); return 1;\n";
+        Out << "}\n\n";
     }
     if (NeedsBuiltinComparisonHelper)
     {

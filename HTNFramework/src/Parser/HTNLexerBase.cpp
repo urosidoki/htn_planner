@@ -80,7 +80,7 @@ void HTNLexerBase::LexNumber(HTNLexerContextBase& ioLexerContext) const
             ioLexerContext.AdvancePosition();
         }
 
-        const uint32      EndPosition = CurrentPosition - StartPosition;
+        const uint32      EndPosition = ioLexerContext.GetPosition() - StartPosition;
         const std::string Lexeme      = Text.substr(StartPosition, EndPosition);
         const float       Number      = std::stof(Lexeme);
         HTN_DOMAIN_CLOG_ERROR(std::stod(Lexeme) < std::numeric_limits<float>::min() || std::stod(Lexeme) > std::numeric_limits<float>::max(),

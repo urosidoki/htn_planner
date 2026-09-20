@@ -80,6 +80,9 @@ bool ValidateValueUse(const AST::ValuePtr& inValue,
             Valid = ValidateValueUse(Argument, inVariables,
                                      "call expression '" + Text(inValue->CallId) + "'",
                                      inFiles, outDiagnostics) && Valid;
+    if (inValue->Kind == AST::ValueKind::Arithmetic)
+        for (const auto& Operand : inValue->GetArithmeticOperandNodes())
+            Valid = ValidateValueUse(Operand, inVariables, inUsage, inFiles, outDiagnostics) && Valid;
     return Valid;
 }
 

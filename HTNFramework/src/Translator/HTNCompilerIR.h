@@ -24,8 +24,11 @@ enum class HTNIRValueKind : uint8_t
     Literal,
     Variable,
     Constant,
-    Call
+    Call,
+    Arithmetic
 };
+
+enum class HTNIRArithmeticOperator : uint8_t { Add, Subtract, Multiply, Divide, Modulo, Increment, Decrement };
 
 enum class HTNIRListSplitOperation : uint32
 {
@@ -62,7 +65,8 @@ struct HTNIRStringTable
     std::unordered_map<std::string, uint32> Indices;
 };
 
-struct HTNIRValue { HTNIRValueKind Kind=HTNIRValueKind::Literal; uint32 Text=0, DebugText=0, SourceLine=0, VariableSlot=HTN_IR_NO_INDEX, StaticValueIndex=HTN_IR_NO_INDEX; HTNIRSourceLocation Source; HTNAtomType AtomType=HTN_ATOM_TYPE_UNBOUND; int32 IntValue=0; float FloatValue=0.0f; uint32 BoolValue=0, ListElement=HTN_IR_NO_INDEX; bool DebugAsVariable=true; };
+struct HTNIRValue { HTNIRValueKind Kind=HTNIRValueKind::Literal; uint32 Text=0, DebugText=0, SourceLine=0, VariableSlot=HTN_IR_NO_INDEX, StaticValueIndex=HTN_IR_NO_INDEX, ArithmeticExpression=HTN_IR_NO_INDEX; HTNIRSourceLocation Source; HTNAtomType AtomType=HTN_ATOM_TYPE_UNBOUND; int32 IntValue=0; float FloatValue=0.0f; uint32 BoolValue=0, ListElement=HTN_IR_NO_INDEX; bool DebugAsVariable=true; };
+struct HTNIRArithmeticExpression { HTNIRArithmeticOperator Operator=HTNIRArithmeticOperator::Add; std::vector<HTNIRValue> Operands; };
 struct HTNIRStaticValue { uint32 Text=0; HTNAtomType AtomType=HTN_ATOM_TYPE_UNBOUND; int32 IntValue=0; float FloatValue=0.0f; uint32 BoolValue=0, ListElement=HTN_IR_NO_INDEX; };
 struct HTNIRListElement { HTNAtomType AtomType=HTN_ATOM_TYPE_UNBOUND; uint32 Text=0; int32 IntValue=0; float FloatValue=0.0f; uint32 BoolValue=0, FirstChildRef=0, ChildCount=0; };
 struct HTNIRCondition
@@ -125,6 +129,9 @@ struct HTNCompilerIR
     {
         if (inValue.Kind == HTNIRValueKind::Variable && inValue.VariableSlot != HTN_IR_NO_INDEX)
             MarkVariableSlot(ioMask, inValue.VariableSlot);
+        if (inValue.Kind == HTNIRValueKind::Arithmetic && inValue.ArithmeticExpression < ArithmeticExpressions.size())
+            for (const HTNIRValue& Operand : ArithmeticExpressions[inValue.ArithmeticExpression].Operands)
+                MarkVariableSlot(ioMask, Operand);
     }
 
     void MarkVariableSlot(std::array<uint64_t, HTN_GENERATED_VARIABLE_SLOT_MASK_WORDS>& ioMask,
@@ -141,6 +148,7 @@ struct HTNCompilerIR
     HTNGeneratedRuntimeBacktrackingSupport RuntimeBacktrackingSupport = HTNGeneratedRuntimeBacktrackingSupport::Disabled;
     HTNIRStringTable Strings;
     std::vector<HTNIRValue> Values;
+    std::vector<HTNIRArithmeticExpression> ArithmeticExpressions;
     std::vector<HTNIRStaticValue> StaticValues;
     std::vector<HTNIRListElement> ListElements;
     std::vector<uint32> ListChildRefs;

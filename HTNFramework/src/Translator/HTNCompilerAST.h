@@ -21,17 +21,22 @@ struct Node
     const HTNSourceRange& GetSourceRange() const { return Range; }
 };
 
-enum class ValueKind : uint8_t { Identifier, Literal, Variable, Constant, Call };
+enum class ValueKind : uint8_t { Identifier, Literal, Variable, Constant, Call, Arithmetic };
+enum class ArithmeticOperator : uint8_t { Add, Subtract, Multiply, Divide, Modulo, Increment, Decrement };
 struct Value : Node
 {
     ValueKind Kind = ValueKind::Literal;
     HTNAtomOwner Atom;
     std::shared_ptr<const Value> CallId;
     std::vector<std::shared_ptr<const Value>> CallArguments;
+    ArithmeticOperator ArithmeticOp = ArithmeticOperator::Add;
+    std::vector<std::shared_ptr<const Value>> ArithmeticOperands;
     const HTNAtom& GetValue() const { return *Atom.Get(); }
     ValueKind GetExpressionType() const { return Kind; }
     const auto& GetIDNode() const { return CallId; }
     const auto& GetArgumentNodes() const { return CallArguments; }
+    ArithmeticOperator GetArithmeticOperator() const { return ArithmeticOp; }
+    const auto& GetArithmeticOperandNodes() const { return ArithmeticOperands; }
 };
 using ValuePtr = std::shared_ptr<const Value>;
 

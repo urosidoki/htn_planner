@@ -47,6 +47,7 @@ extern "C" const HTNGeneratedPlannerDefinition* CreateWandererHTN_GetDefinition(
 extern "C" const HTNGeneratedPlannerDefinition* CreateBuiltinComparisonsDemoHTN_GetDefinition(void);
 extern "C" const HTNGeneratedPlannerDefinition* CreateHierarchicalBacktrackingHTN_GetDefinition(void);
 extern "C" const HTNGeneratedPlannerDefinition* CreateRuntimeBacktrackingDemoHTN_GetDefinition(void);
+extern "C" const HTNGeneratedPlannerDefinition* CreateNumericExpressionsHTN_GetDefinition(void);
 
 namespace
 {
@@ -166,6 +167,12 @@ const Domain kDomains[] = {
             "demo_hierarchical_branches",
             "demo_direct_branch_fallback"
         }
+    },
+    {
+        "NumericExpressionsDemo",
+        CreateNumericExpressionsHTN_GetDefinition(),
+        "numeric_expressions",
+        {"run", "division_by_zero", "invalid_operand_type"}
     }
 };
 // clang-format on

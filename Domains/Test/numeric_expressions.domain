@@ -1,0 +1,71 @@
+(:domain NumericExpressionsDemo top_level_domain
+
+    (:method (run) top_level_method
+        (numeric_expressions_succeed
+            (and
+                (time ?time)
+                (plan_start_time ?plan_start_time)
+                (plan_duration ?plan_duration)
+                (<= ?time (+ ?plan_start_time ?plan_duration))
+                (== (+ 1 2 3) 6)
+                (== (- 10 3 2) 5)
+                (< (- 5) 0)
+                (== (* 2 3 4) 24)
+                (== (/ 20 2 2) 5)
+                (== (% 17 5) 2)
+                (== (+ 1 2.5) 3.5)
+                (== (++ 41) 42)
+                (== (-- 41) 40)
+                (== (++ 2.5) 3.5)
+                (== (-- (++ 10)) 10)
+                (> (* (- ?time 1) 2) (/ 100 2))
+            )
+            (
+                (!numeric_result "success")
+            )
+        )
+        (numeric_expressions_failed
+            (
+            )
+            (
+                (!numeric_result "failure")
+            )
+        )
+    )
+
+    (:method (division_by_zero) top_level_method
+        (invalid_expression_does_not_succeed
+            (and
+                (== (/ 1 0) 0)
+            )
+            (
+                (!numeric_result "unexpected_success")
+            )
+        )
+        (invalid_expression_falls_back
+            (
+            )
+            (
+                (!numeric_result "controlled_failure")
+            )
+        )
+    )
+
+    (:method (invalid_operand_type) top_level_method
+        (invalid_expression_does_not_succeed
+            (and
+                (== (+ invalid 1) 2)
+            )
+            (
+                (!numeric_result "unexpected_success")
+            )
+        )
+        (invalid_expression_falls_back
+            (
+            )
+            (
+                (!numeric_result "controlled_failure")
+            )
+        )
+    )
+)

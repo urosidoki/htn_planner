@@ -92,6 +92,32 @@ bool HTNCompilerDomainLexer::Lex(HTNCompilerDomainLexerContext& ioDomainLexerCon
             if (HasEqual) ioDomainLexerContext.AdvancePosition();
             break;
         }
+        case '+': {
+            const bool IsIncrement = ioDomainLexerContext.GetCharacter(1) == '+';
+            ioDomainLexerContext.AddToken(HTNAtomOwner(), IsIncrement ? HTNTokenType::INCREMENT : HTNTokenType::PLUS
+                HTN_LOG_ONLY(, IsIncrement ? "++" : "+"));
+            ioDomainLexerContext.AdvancePosition();
+            if (IsIncrement) ioDomainLexerContext.AdvancePosition();
+            break;
+        }
+        case '-': {
+            const bool IsDecrement = ioDomainLexerContext.GetCharacter(1) == '-';
+            ioDomainLexerContext.AddToken(HTNAtomOwner(), IsDecrement ? HTNTokenType::DECREMENT : HTNTokenType::MINUS
+                HTN_LOG_ONLY(, IsDecrement ? "--" : "-"));
+            ioDomainLexerContext.AdvancePosition();
+            if (IsDecrement) ioDomainLexerContext.AdvancePosition();
+            break;
+        }
+        case '*': {
+            ioDomainLexerContext.AddToken(HTNAtomOwner(), HTNTokenType::MULTIPLY HTN_LOG_ONLY(, "*"));
+            ioDomainLexerContext.AdvancePosition();
+            break;
+        }
+        case '%': {
+            ioDomainLexerContext.AddToken(HTNAtomOwner(), HTNTokenType::MODULO HTN_LOG_ONLY(, "%"));
+            ioDomainLexerContext.AdvancePosition();
+            break;
+        }
         case '?': {
             // Question mark
             ioDomainLexerContext.AddToken(HTNAtomOwner(), HTNTokenType::QUESTION_MARK HTN_LOG_ONLY(, std::string(1, Character)));
@@ -119,20 +145,7 @@ bool HTNCompilerDomainLexer::Lex(HTNCompilerDomainLexerContext& ioDomainLexerCon
                 LexComment(ioDomainLexerContext);
                 break;
             }
-
-            const std::string Message = std::format("Expected '/' after [{}] for a comment", Character);
-            HTNSourceRange ErrorRange;
-            ErrorRange.Begin.Offset = ioDomainLexerContext.GetPosition();
-            ErrorRange.Begin.Line = static_cast<int>(ioDomainLexerContext.GetRow() + 1);
-            ErrorRange.Begin.Column = static_cast<int>(ioDomainLexerContext.GetColumn() + 1);
-            ErrorRange.End = ErrorRange.Begin;
-            ++ErrorRange.End.Offset;
-            ++ErrorRange.End.Column;
-            ioDomainLexerContext.SetLastError(Message, ErrorRange);
-#ifdef HTN_ENABLE_LOGGING
-            HTNLexerHelpers::PrintError(Message, ioDomainLexerContext);
-#endif
-            Result = false;
+            ioDomainLexerContext.AddToken(HTNAtomOwner(), HTNTokenType::DIVIDE HTN_LOG_ONLY(, "/"));
             ioDomainLexerContext.AdvancePosition();
             break;
         }

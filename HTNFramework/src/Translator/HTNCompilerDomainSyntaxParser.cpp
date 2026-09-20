@@ -157,6 +157,38 @@ AST::ValuePtr Argument(const std::vector<Form>& inItems, size_t& ioIndex, uint32
         Result->Atom = HTNAtomOwner(Name(Id));
         Result->Range.End = Id.Range.End;
     }
+    else if (Head.IsList && !Head.Items.empty() &&
+             (Is(Head.Items.front(), Type::PLUS) || Is(Head.Items.front(), Type::MINUS) ||
+              Is(Head.Items.front(), Type::INCREMENT) || Is(Head.Items.front(), Type::DECREMENT) ||
+              Is(Head.Items.front(), Type::MULTIPLY) || Is(Head.Items.front(), Type::DIVIDE) ||
+              Is(Head.Items.front(), Type::MODULO)))
+    {
+        Result->Kind = AST::ValueKind::Arithmetic;
+        Result->ArithmeticOp = Is(Head.Items.front(), Type::PLUS) ? AST::ArithmeticOperator::Add :
+            Is(Head.Items.front(), Type::MINUS) ? AST::ArithmeticOperator::Subtract :
+            Is(Head.Items.front(), Type::INCREMENT) ? AST::ArithmeticOperator::Increment :
+            Is(Head.Items.front(), Type::DECREMENT) ? AST::ArithmeticOperator::Decrement :
+            Is(Head.Items.front(), Type::MULTIPLY) ? AST::ArithmeticOperator::Multiply :
+            Is(Head.Items.front(), Type::DIVIDE) ? AST::ArithmeticOperator::Divide :
+                                                   AST::ArithmeticOperator::Modulo;
+        Result->Atom = HTNAtomOwner();
+        Result->Range = Head.Range;
+        for (size_t I = 1; I < Head.Items.size();)
+        {
+            Result->ArithmeticOperands.push_back(Argument(Head.Items, I, inFileIndex));
+            if (!ErrorMessage.empty()) return {};
+        }
+        const size_t Count = Result->ArithmeticOperands.size();
+        const bool ValidArity = (Result->ArithmeticOp == AST::ArithmeticOperator::Increment ||
+                                 Result->ArithmeticOp == AST::ArithmeticOperator::Decrement) ? Count == 1u :
+            Result->ArithmeticOp == AST::ArithmeticOperator::Subtract ? Count >= 1u :
+            Result->ArithmeticOp == AST::ArithmeticOperator::Modulo ? Count == 2u : Count >= 2u;
+        if (!ValidArity)
+        {
+            Invalid("Invalid arithmetic expression arity");
+            return {};
+        }
+    }
     else if (Head.IsList && !Head.Items.empty() && Is(Head.Items.front(), Type::CALL))
     {
         Result->Kind = AST::ValueKind::Call;

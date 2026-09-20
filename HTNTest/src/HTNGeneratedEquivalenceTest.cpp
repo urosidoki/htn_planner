@@ -48,6 +48,7 @@ extern "C" const HTNGeneratedPlannerDefinition* CreateBacktrackingPolicyOverflow
 extern "C" const HTNGeneratedPlannerDefinition* CreateBacktrackingPolicyFixedSmallHTN_GetDefinition(void);
 extern "C" const HTNGeneratedPlannerDefinition* CreateBacktrackingPolicyFixedEnoughHTN_GetDefinition(void);
 extern "C" const HTNGeneratedPlannerDefinition* CreateAAACombatNPCHTN_GetDefinition(void);
+extern "C" const HTNGeneratedPlannerDefinition* CreateNumericExpressionsHTN_GetDefinition(void);
 namespace
 {
 #ifdef HTN_MEMORY_ATOM_DIAGNOSTICS
@@ -154,6 +155,7 @@ const GeneratedPlannerRegistration kGeneratedPlannerRegistrations[] = {
     { "Human", CreateHumanHTN_GetDefinition() },
     { "NestedCallsDemo", CreateNestedCallsHTN_GetDefinition() },
     { "IncludeDemo", CreateIncludeDemoHTN_GetDefinition() },
+    { "NumericExpressionsDemo", CreateNumericExpressionsHTN_GetDefinition() },
 };
 
 uint32_t GetGeneratedPlannerDefinitionCount()
@@ -872,6 +874,13 @@ TEST_P(HTNGeneratedEquivalenceTest, GeneratedProducesExpectedResult)
         const std::vector<std::string> ExpectedPlan = {
             "!rollback_result \"only\" ()"};
         EXPECT_EQ(ExpectedPlan, FormatPlan(GeneratedOutput));
+    }
+    else if (std::string_view(TestCase.GeneratedDomainName) == "NumericExpressionsDemo")
+    {
+        const std::string ExpectedResult = std::string_view(TestCase.TestName) == "NestedAndMixedArithmetic"
+            ? "!numeric_result \"success\""
+            : "!numeric_result \"controlled_failure\"";
+        EXPECT_EQ(FormatPlan(GeneratedOutput), (std::vector<std::string>{ExpectedResult}));
     }
 }
 
@@ -1780,6 +1789,15 @@ INSTANTIATE_TEST_CASE_P(
     HTNGeneratedEquivalenceTest,
     testing::Values(
         HTNEquivalenceCase{"NestedCalls", "callterms", "nested_calls", "NestedCallsDemo", "test_nested_calls"}),
+    EquivalenceCaseName);
+
+INSTANTIATE_TEST_CASE_P(
+    NumericExpressions,
+    HTNGeneratedEquivalenceTest,
+    testing::Values(
+        HTNEquivalenceCase{"NestedAndMixedArithmetic", "numeric_expressions", "numeric_expressions", "NumericExpressionsDemo", "run"},
+        HTNEquivalenceCase{"DivisionByZero", "numeric_expressions", "numeric_expressions", "NumericExpressionsDemo", "division_by_zero"},
+        HTNEquivalenceCase{"InvalidOperandType", "numeric_expressions", "numeric_expressions", "NumericExpressionsDemo", "invalid_operand_type"}),
     EquivalenceCaseName);
 
 INSTANTIATE_TEST_CASE_P(
