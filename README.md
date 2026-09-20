@@ -14,7 +14,7 @@ The repository includes:
 - An editor, language server, hot reload example, tests and benchmarks.
 - A packageable Windows x64 SDK with CMake integration.
 
-The current stable version is **1.0.0**. The generated planner and runtime bridge
+The current stable version is **1.1.0**. The generated planner and runtime bridge
 ABIs are versioned and validated at runtime.
 
 ## Domain example

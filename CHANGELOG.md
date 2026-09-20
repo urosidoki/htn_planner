@@ -5,6 +5,21 @@ All notable changes to HTN Planner are documented in this file. Releases follow
 
 ## Unreleased
 
+## 1.1.0 - 2026-09-20
+
+### Added
+
+- Builtin integer and floating-point arithmetic expressions using `+`, `-`, `*`,
+  `/` and `%`.
+- Unary `++` and `--` arithmetic expressions.
+- Numeric expressions can be nested and used as operands in builtin comparisons.
+- Numeric expressions demo domain and generated planner tests.
+
+### Validated
+
+- Verified nested and mixed arithmetic through the generated execution path.
+- Verified runtime failure for division by zero and invalid operand types.
+
 ## 1.0.0 - 2026-09-19
 
 ### Added
