@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Translator/HTNCallTermBridge.h"
+#include "Core/HTNMissingCallTerm.h"
 #include "HTNCoreMinimal.h"
 
 #include <array>
@@ -37,10 +38,4 @@ private:
     friend HTNGeneratedCallTerm HTNCallTermRegistry_ResolveGeneratedCallTerm(
         const HTNCallTermBindingContext* callterm_context,
         const char* name);
-    friend int HTNCallTermRegistry_InvokeGeneratedCallTerm(
-        const HTNCallTermBindingContext* callterm_context,
-        const HTNGeneratedCallTerm* callterm,
-        const HTNAtom* const* arguments,
-        uint32_t argument_count,
-        HTNAtom* out_result);
 };

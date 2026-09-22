@@ -1,0 +1,32 @@
+(:include "../Includes/axiom_overload_base.domain")
+(:domain AxiomOverloads top_level_domain
+    // Calls precede declarations deliberately.
+    (:method (run) top_level_method
+        (all (and (#gate) (#gate (++ 6)) (#AxiomOverloadBase::gate)
+                  (#AxiomOverloadBase::gate 3) (#gate 7 ?result)
+                  (#gate 7 ?other ?state) (overload_state ?bound_state)
+                  (#gate 7 ?matching ?bound_state) (== ?matching 70)
+                  (#chain) (== ?other 70) (== ?state 9))
+             ((!overloads ?result ?state))))
+    (:method (mismatch) top_level_method
+        (wrong (and (#gate 7 99)) ((!unexpected)))
+        (fallback () ((!controlled_failure))))
+    (:method (io_mismatch) top_level_method
+        (wrong (and (#gate 7 ?result 99)) ((!unexpected ?result)))
+        (fallback () ((!controlled_failure))))
+    (:method (backtrack) top_level_method
+        (choose (and (#gate 7 ?result) (== ?result 71)) ((!selected ?result))))
+    (:method (io_backtrack) top_level_method
+        (choose (and (#gate 7 ?result ?state) (== ?state 10)) ((!selected_io ?result ?state))))
+    (:method (io_bound_backtrack) top_level_method
+        (choose (and (overload_state ?state) (#gate 7 ?result ?state) (== ?result 71))
+                ((!selected_io ?result ?state))))
+    (:axiom (gate ?inp_value) overrides AxiomOverloadBase
+        (and (== ?inp_value 7)))
+    (:axiom (gate ?inp_value ?out_result)
+        (and (overload_value ?inp_value ?out_result)))
+    (:axiom (gate ?inp_value ?out_result ?io_state)
+        (and (overload_value ?inp_value ?out_result) (overload_state ?io_state)))
+    (:axiom (chain) (and (#chain 1)))
+    (:axiom (chain ?inp_value) (and (== ?inp_value 1)))
+)

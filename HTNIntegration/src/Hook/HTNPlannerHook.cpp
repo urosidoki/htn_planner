@@ -34,6 +34,9 @@ HTNDecompositionStatus ExecuteGeneratedPlanner(const HTNGeneratedPlannerDefiniti
     // the generated entry point before any trusted hot-path helper runs.
     HTNGeneratedPlannerContext GeneratedContext{};
     GeneratedContext.world_state = ExecutionContext.WorldState;
+    GeneratedContext.client_context = ExecutionContext.ClientContext;
+    GeneratedContext.missing_callterm_policy = ExecutionContext.MissingCallTermPolicy;
+    GeneratedContext.missing_callterm_callback = ExecutionContext.MissingCallTermCallback;
     GeneratedContext.callterm_binding_context = ExecutionContext.CallTermBindingContext;
     GeneratedContext.backtracking_mode = ExecutionContext.BacktrackingMode;
 #ifdef HTN_DEBUG_DECOMPOSITION

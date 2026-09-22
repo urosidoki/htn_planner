@@ -20,6 +20,9 @@ HTNVSCode/*.vsix
 mono_crash.*
 
 # Build results
+/build/clang-cl-smoke/
+/build/linux-smoke/
+/build/linux-smoke-windows/
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
@@ -417,3 +420,6 @@ FodyWeavers.xsd
 # Optick
 *.opt
 !ThirdParty/optick/bin**
+
+# Local release validation reports
+/build/release-*.xml

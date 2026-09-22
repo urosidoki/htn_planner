@@ -3,6 +3,8 @@
 #include "Core/HTNCallTermRegistry.h"
 #include "Core/HTNCallTermBindingContext.h"
 #include "Translator/HTNCallTermBridge.h"
+#include "Translator/HTNGeneratedPlanner.h"
+#include <cassert>
 
 bool HTNCallTermRegistry::IsBound(const std::string& inID) const
 {
@@ -25,31 +27,56 @@ const HTNCallTermSignature* HTNCallTermRegistry::ResolveSignature(const std::str
 }
 
 HTNAtomOwner HTNCallTermRegistry::Execute(const std::string& inID,
-                                          const HTNCallTermBindingContext& inContext,
-                                          const HTNCallTermArguments& inArguments) const
+                                          const HTNPlannerExecutionContext& inContext,
+                                          const HTNCallTermArguments& inArguments,
+                                          const HTNCallTermSource* inSource) const
 {
     const auto It = mEntries.find(inID);
-    if (It == mEntries.end())
-    {
-        HTN_LOG_ERROR("Callterm [{}] is not bound", inID);
-        return HTNAtomOwner();
-    }
+    return InvokeEntry(It == mEntries.end() ? nullptr : &It->second, inID.c_str(), inContext.CallTermBindingContext, inArguments, inSource, inContext.ClientContext,
+                       inContext.MissingCallTermPolicy, inContext.MissingCallTermCallback);
+}
 
-    const Entry& CallTerm = It->second;
-    void* Daemon = nullptr;
-    if (CallTerm.DaemonSlot != std::numeric_limits<std::size_t>::max())
-    {
-        Daemon = inContext.GetDaemon(CallTerm.DaemonSlot);
-        if (!Daemon)
+HTNAtomOwner HTNCallTermRegistry::InvokeEntry(const Entry* inEntry, const char* inName,
+                                             const HTNCallTermBindingContext* inContext,
+                                             const HTNCallTermArguments& inArguments,
+                                             const HTNCallTermSource* inSource, void* inClientContext,
+                                             HTNMissingCallTermPolicy inPolicy, HTNMissingCallTermCallback inCallback)
+{
+    const auto Missing = [&](HTNMissingCallTermReason inReason) {
+        assert(inPolicy != HTNMissingCallTermPolicy::Unset &&
+               "Configure the missing callterm policy explicitly before invoking callterms");
+        assert((inPolicy == HTNMissingCallTermPolicy::Unset ||
+                inPolicy == HTNMissingCallTermPolicy::FailSilently ||
+                inPolicy == HTNMissingCallTermPolicy::Report) && "Invalid missing callterm policy");
+        if (inPolicy == HTNMissingCallTermPolicy::Report)
         {
-            HTN_LOG_ERROR("Callterm [{}] requires daemon [{}], but no instance is configured",
-                          inID,
-                          CallTerm.DaemonID);
-            return HTNAtomOwner();
+            assert(inCallback && "Report policy requires a missing callterm callback");
+            if (inCallback)
+            {
+                HTNMissingCallTermInfo Info{};
+                Info.Name = inName;
+                Info.Reason = inReason;
+                Info.DaemonID = inEntry && !inEntry->DaemonID.empty() ? inEntry->DaemonID.c_str() : nullptr;
+                if (inSource) Info.Source = *inSource;
+                inCallback(inClientContext, &Info);
+            }
         }
+        return HTNAtomOwner();
+    };
+    if (!inEntry)
+        return Missing(HTNMissingCallTermReason::NotRegistered);
+    if (!inEntry->Function)
+        return Missing(HTNMissingCallTermReason::MissingBinding);
+    void* Daemon = nullptr;
+    if (inEntry->DaemonSlot != std::numeric_limits<std::size_t>::max())
+    {
+        Daemon = inContext ? inContext->GetDaemon(inEntry->DaemonSlot) : nullptr;
+        if (!Daemon)
+            return Missing(HTNMissingCallTermReason::MissingInstance);
     }
-
-    return CallTerm.Function(Daemon, inArguments);
+    HTNCallTermArguments Arguments = inArguments;
+    Arguments.mClientContext = inClientContext;
+    return inEntry->Function(Daemon, Arguments);
 }
 
 bool HTNCallTermRegistry::BindMember(const std::string& inID,
@@ -133,39 +160,32 @@ extern "C" HTNGeneratedCallTerm HTNCallTermRegistry_ResolveGeneratedCallTerm(
 }
 
 extern "C" int HTNCallTermRegistry_InvokeGeneratedCallTerm(
-    const HTNCallTermBindingContext* inContext,
+    const HTNGeneratedPlannerContext* inContext,
     const HTNGeneratedCallTerm* inCallTerm,
     const HTNAtom* const* inArguments,
     const std::uint32_t inArgumentCount,
     HTNAtom* outResult)
 {
-    const auto* Entry = inCallTerm
-        ? static_cast<const HTNCallTermRegistry::Entry*>(inCallTerm->registry_entry)
-        : nullptr;
-    if (!Entry)
-    {
-        HTN_LOG_ERROR("Callterm [{}] is not bound", inCallTerm && inCallTerm->name ? inCallTerm->name : "<unknown>");
-        return 0;
-    }
+    return HTNCallTermRegistry_InvokeGeneratedCallTermWithSource(
+        inContext, inCallTerm, inArguments, inArgumentCount, outResult, nullptr);
+}
 
-    void* Daemon = nullptr;
-    if (Entry->DaemonSlot != std::numeric_limits<std::size_t>::max())
-    {
-        Daemon = inContext ? inContext->GetDaemon(Entry->DaemonSlot) : nullptr;
-        if (!Daemon)
-        {
-            HTN_LOG_ERROR("Callterm [{}] requires daemon [{}], but no instance is configured",
-                          inCallTerm && inCallTerm->name ? inCallTerm->name : "<unknown>",
-                          Entry->DaemonID);
-            return 0;
-        }
-    }
-
+extern "C" int HTNCallTermRegistry_InvokeGeneratedCallTermWithSource(
+    const HTNGeneratedPlannerContext* inContext,
+    const HTNGeneratedCallTerm* inCallTerm,
+    const HTNAtom* const* inArguments,
+    const std::uint32_t inArgumentCount,
+    HTNAtom* outResult,
+    const HTNCallTermSource* inSource)
+{
+    if (!inContext) return 0;
+    const auto* Entry = inCallTerm ? static_cast<const HTNCallTermRegistry::Entry*>(inCallTerm->registry_entry) : nullptr;
     const HTNCallTermArguments Arguments(inArguments, inArgumentCount);
-    HTNAtomOwner Result = Entry->Function(Daemon, Arguments);
+    HTNAtomOwner Result = HTNCallTermRegistry::InvokeEntry(Entry, inCallTerm ? inCallTerm->name : nullptr,
+                                                         inContext->callterm_binding_context, Arguments, inSource, inContext->client_context,
+                                                         inContext->missing_callterm_policy, inContext->missing_callterm_callback);
     if (!Result.IsBound())
         return 0;
-
     HTNAtom_AssignMove(outResult, Result.Get());
     return 1;
 }

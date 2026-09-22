@@ -5,6 +5,7 @@
 #include "Core/HTNAtomOwner.h"
 
 #include "Core/HTNAtom.h"
+#include "Core/HTNPlannerExecutionContext.h"
 #include "Translator/HTNCallTermBridge.h"
 #include "HTNCoreMinimal.h"
 
@@ -37,10 +38,15 @@ public:
         return mAtoms ? *mAtoms[inIndex] : *mOwners[inIndex].Get();
     }
 
+    // Borrowed execution context, populated by the registry for each invocation.
+    void* GetClientContext() const { return mClientContext; }
+
     size_t size() const { return mSize; }
     bool empty() const { return mSize == 0u; }
 
 private:
+    friend class HTNCallTermRegistry;
+    void* mClientContext = nullptr;
     const HTNAtomOwner* mOwners = nullptr;
     const HTNAtom* const* mAtoms = nullptr;
     size_t mSize = 0u;
@@ -123,8 +129,9 @@ public:
     HTN_NODISCARD const HTNCallTermFunction* Resolve(const std::string& inID) const;
     HTN_NODISCARD const HTNCallTermSignature* ResolveSignature(const std::string& inID) const;
     HTN_NODISCARD HTNAtomOwner Execute(const std::string& inID,
-                                       const HTNCallTermBindingContext& inContext,
-                                       const HTNCallTermArguments& inArguments) const;
+                                       const HTNPlannerExecutionContext& inContext,
+                                       const HTNCallTermArguments& inArguments,
+                                       const HTNCallTermSource* inSource = nullptr) const;
 
 private:
     struct Entry
@@ -134,6 +141,16 @@ private:
         std::size_t DaemonSlot = std::numeric_limits<std::size_t>::max();
         std::string DaemonID;
     };
+
+    static HTNAtomOwner InvokeEntry(const Entry* inEntry, const char* inName,
+                                    const HTNCallTermBindingContext* inContext,
+                                    const HTNCallTermArguments& inArguments,
+                                    const HTNCallTermSource* inSource, void* inClientContext,
+                                    HTNMissingCallTermPolicy inPolicy, HTNMissingCallTermCallback inCallback);
+
+    friend int HTNCallTermRegistry_InvokeGeneratedCallTermWithSource(
+        const HTNGeneratedPlannerContext*, const HTNGeneratedCallTerm*, const HTNAtom* const*,
+        uint32_t, HTNAtom*, const HTNCallTermSource*);
 
     HTN_NODISCARD std::size_t FindDaemonSlot(const std::string& inID) const;
 
@@ -145,7 +162,7 @@ private:
         const HTNCallTermBindingContext* callterm_context,
         const char* name);
     friend int HTNCallTermRegistry_InvokeGeneratedCallTerm(
-        const HTNCallTermBindingContext* callterm_context,
+        const HTNGeneratedPlannerContext* context,
         const HTNGeneratedCallTerm* callterm,
         const HTNAtom* const* arguments,
         uint32_t argument_count,

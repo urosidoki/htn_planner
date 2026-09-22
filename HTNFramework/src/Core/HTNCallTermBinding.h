@@ -31,12 +31,12 @@ HTNCallTermSignature MakeSignature(std::index_sequence<Indices...>)
 }
 
 template<typename ArgumentType>
-bool TryParseArgument(const HTNAtom& inAtom, BareType<ArgumentType>& outValue)
+bool TryParseArgument(void* inClientContext, const HTNAtom& inAtom, BareType<ArgumentType>& outValue)
 {
     static_assert(HTNIsTypeConvertible<ArgumentType>,
                   "No HTN type conversion registered for this callterm argument type");
 
-    if (HTNTryParseType(inAtom, outValue))
+    if (HTNTryParseType(inClientContext, inAtom, outValue))
         return true;
 
     HTN_LOG_ERROR("Could not convert HTN callterm argument to [{}]", HTNTypeTraits<BareType<ArgumentType>>::Name);
@@ -57,7 +57,7 @@ bool TryParseArguments(
     (void)std::initializer_list<int>{
         (Success
              ? (Success = TryParseArgument<std::tuple_element_t<Indices, ArgumentsTuple>>(
-                    inArguments[Indices], std::get<Indices>(outValues)),
+                    inArguments.GetClientContext(), inArguments[Indices], std::get<Indices>(outValues)),
                 0)
              : 0)...};
 
@@ -65,14 +65,14 @@ bool TryParseArguments(
 }
 
 template<typename ReturnType>
-HTNAtomOwner MakeResult(ReturnType&& inResult)
+HTNAtomOwner MakeResult(void* inClientContext, ReturnType&& inResult)
 {
     using ValueType = BareType<ReturnType>;
     static_assert(HTNIsTypeConvertible<ValueType>,
                   "No HTN type conversion registered for this callterm return type");
 
     HTNAtomOwner Result;
-    if (!HTNTryToAtom(inResult, Result))
+    if (!HTNTryToAtom(inClientContext, inResult, Result))
     {
         HTN_LOG_ERROR("Could not convert callterm return value from [{}] to HTNAtom",
                       HTNTypeTraits<ValueType>::Name);
@@ -116,7 +116,7 @@ private:
         if (!TryParseArguments<ArgumentsTuple>(inArguments, ParsedArguments, inIndices))
             return {};
 
-        return MakeResult(Function(std::get<Indices>(ParsedArguments)...));
+        return MakeResult(inArguments.GetClientContext(), Function(std::get<Indices>(ParsedArguments)...));
     }
 };
 
@@ -159,7 +159,7 @@ private:
         if (!TryParseArguments<ArgumentsTuple>(inArguments, ParsedArguments, inIndices))
             return {};
 
-        return MakeResult((inInstance.*Function)(std::get<Indices>(ParsedArguments)...));
+        return MakeResult(inArguments.GetClientContext(), (inInstance.*Function)(std::get<Indices>(ParsedArguments)...));
     }
 };
 }

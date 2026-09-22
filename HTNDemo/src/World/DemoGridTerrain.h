@@ -34,21 +34,21 @@ struct HTNTypeTraits<Cell>
 template<>
 struct HTNTypeConverter<Cell>
 {
-    static bool FromAtom(const HTNAtom& inAtom, Cell& outValue)
+    static bool FromAtom([[maybe_unused]] void* inClientContext, const HTNAtom& inAtom, Cell& outValue)
     {
         HTNAtomListOwner List;
-        if (!HTNTryParseType(inAtom, List) || HTNAtomList_GetSize(List.Get()) != 2u)
+        if (!HTNTryParseType(inClientContext, inAtom, List) || HTNAtomList_GetSize(List.Get()) != 2u)
             return false;
 
-        return HTNTryParseType(*HTNAtomList_Get(List.Get(), 0u), outValue.X) &&
-               HTNTryParseType(*HTNAtomList_Get(List.Get(), 1u), outValue.Y);
+        return HTNTryParseType(inClientContext, *HTNAtomList_Get(List.Get(), 0u), outValue.X) &&
+               HTNTryParseType(inClientContext, *HTNAtomList_Get(List.Get(), 1u), outValue.Y);
     }
 
-    static bool ToAtom(const Cell& inValue, HTNAtom& outAtom)
+    static bool ToAtom([[maybe_unused]] void* inClientContext, const Cell& inValue, HTNAtom& outAtom)
     {
         HTNAtomOwner X;
         HTNAtomOwner Y;
-        if (!HTNTryToAtom(inValue.X, *X.Get()) || !HTNTryToAtom(inValue.Y, *Y.Get()))
+        if (!HTNTryToAtom(inClientContext, inValue.X, *X.Get()) || !HTNTryToAtom(inClientContext, inValue.Y, *Y.Get()))
             return false;
 
         const HTNAtomListOwner List({X, Y});

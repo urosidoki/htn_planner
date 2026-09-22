@@ -4,6 +4,7 @@
 
 #include "Core/HTNAtomC.h"
 #include "Core/HTNBacktrackingMode.h"
+#include "Core/HTNMissingCallTerm.h"
 #include "Core/HTNDecompositionStatus.h"
 
 #include <stddef.h>
@@ -11,13 +12,13 @@
 
 #ifndef HTN_GENERATED_PLANNER_ABI_VERSION
 #if defined(HTN_DEBUG_DECOMPOSITION) && defined(HTN_GENERATED_EXECUTION_PROFILING)
-#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48570003)
+#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48570005)
 #elif defined(HTN_DEBUG_DECOMPOSITION)
-#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48550003)
+#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48550005)
 #elif defined(HTN_GENERATED_EXECUTION_PROFILING)
-#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48560002)
+#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48560004)
 #else
-#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48540002)
+#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48540004)
 #endif
 #endif
 
@@ -99,6 +100,10 @@ struct HTNGeneratedPlannerContext
 #endif
     void* execution_storage;
     const void* prepared_storage;
+    /* Borrowed client services; never cached in prepared/execution storage. */
+    void* client_context;
+    HTNMissingCallTermPolicy missing_callterm_policy;
+    HTNMissingCallTermCallback missing_callterm_callback;
 };
 
 typedef int (*HTNGeneratedTaskContinuationFn)(const HTNGeneratedPlannerContext* context, HTNAtom* out_result);
@@ -106,7 +111,7 @@ typedef int (*HTNGeneratedTaskContinuationFn)(const HTNGeneratedPlannerContext* 
 /* Input/output contract:
    - call is borrowed and uses the common HTN call representation: (head arg0 ... argN).
    - require_top_level != 0 restricts dispatch to explicit top_level_method entries;
-     zero additionally permits generated targets referenced by #deferred calls.
+     zero additionally permits generated targets referenced by &deferred calls.
    - the generated dispatch accepts methods marked externally decomposable. Public planning
      currently exposes only explicit top-level methods; deferred-call targets will reuse the
      same dispatch without becoming public top-level methods.

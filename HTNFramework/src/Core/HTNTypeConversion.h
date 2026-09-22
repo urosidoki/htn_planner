@@ -51,20 +51,33 @@ constexpr std::optional<HTNAtomType> HTNGetExpectedAtomType()
 // Converts an HTNAtom into a native C++ value. Failure is a data/domain error,
 // not a programming invariant, so converters report it rather than asserting.
 template<typename T>
-bool HTNTryParseType(const HTNAtom& inAtom, T& outValue)
+bool HTNTryParseType(void* inClientContext, const HTNAtom& inAtom, T& outValue)
 {
     using ValueType = HTNTypeConversionDetail::BareType<T>;
     static_assert(HTNTypeTraits<ValueType>::IsSupported, "No HTN type conversion registered for this C++ type");
-    return HTNTypeConverter<ValueType>::FromAtom(inAtom, outValue);
+    return HTNTypeConverter<ValueType>::FromAtom(inClientContext, inAtom, outValue);
 }
 
 // Converts a native C++ value into its HTNAtom representation.
 template<typename T>
-bool HTNTryToAtom(const T& inValue, HTNAtom& outAtom)
+bool HTNTryToAtom(void* inClientContext, const T& inValue, HTNAtom& outAtom)
 {
     using ValueType = HTNTypeConversionDetail::BareType<T>;
     static_assert(HTNTypeTraits<ValueType>::IsSupported, "No HTN type conversion registered for this C++ type");
-    return HTNTypeConverter<ValueType>::ToAtom(inValue, outAtom);
+    return HTNTypeConverter<ValueType>::ToAtom(inClientContext, inValue, outAtom);
+}
+
+// Context-free convenience overloads explicitly supply a null client context.
+template<typename T>
+bool HTNTryParseType(const HTNAtom& inAtom, T& outValue)
+{
+    return HTNTryParseType(nullptr, inAtom, outValue);
+}
+
+template<typename T>
+bool HTNTryToAtom(const T& inValue, HTNAtom& outAtom)
+{
+    return HTNTryToAtom(nullptr, inValue, outAtom);
 }
 
 // ---- HTN native representations ------------------------------------------------
@@ -80,12 +93,12 @@ struct HTNTypeTraits<HTNAtom>
 template<>
 struct HTNTypeConverter<HTNAtom>
 {
-    static bool FromAtom(const HTNAtom& inAtom, HTNAtom& outValue)
+    static bool FromAtom(void*, const HTNAtom& inAtom, HTNAtom& outValue)
     {
         return HTNAtom_AssignCopy(&outValue, &inAtom) != 0;
     }
 
-    static bool ToAtom(const HTNAtom& inValue, HTNAtom& outAtom)
+    static bool ToAtom(void*, const HTNAtom& inValue, HTNAtom& outAtom)
     {
         return HTNAtom_AssignCopy(&outAtom, &inValue) != 0;
     }
@@ -103,13 +116,13 @@ struct HTNTypeTraits<HTNAtomOwner>
 template<>
 struct HTNTypeConverter<HTNAtomOwner>
 {
-    static bool FromAtom(const HTNAtom& inAtom, HTNAtomOwner& outValue)
+    static bool FromAtom(void*, const HTNAtom& inAtom, HTNAtomOwner& outValue)
     {
         outValue = inAtom;
         return true;
     }
 
-    static bool ToAtom(const HTNAtomOwner& inValue, HTNAtom& outAtom)
+    static bool ToAtom(void*, const HTNAtomOwner& inValue, HTNAtom& outAtom)
     {
         return HTNAtom_AssignCopy(&outAtom, inValue.Get()) != 0;
     }
@@ -128,7 +141,7 @@ struct HTNTypeTraits<HTNAtomListOwner>
 template<>
 struct HTNTypeConverter<HTNAtomListOwner>
 {
-    static bool FromAtom(const HTNAtom& inAtom, HTNAtomListOwner& outValue)
+    static bool FromAtom(void*, const HTNAtom& inAtom, HTNAtomListOwner& outValue)
     {
         if (!HTNAtomIsType<HTNAtomList>(inAtom))
             return false;
@@ -137,7 +150,7 @@ struct HTNTypeConverter<HTNAtomListOwner>
         return true;
     }
 
-    static bool ToAtom(const HTNAtomListOwner& inValue, HTNAtom& outAtom)
+    static bool ToAtom(void*, const HTNAtomListOwner& inValue, HTNAtom& outAtom)
     {
         return HTNAtom_SetListCopy(&outAtom, inValue.Get()) != 0;
     }
@@ -155,14 +168,14 @@ struct HTNTypeConverter<HTNAtomListOwner>
     template<> \
     struct HTNTypeConverter<CppType> \
     { \
-        static bool FromAtom(const HTNAtom& inAtom, CppType& outValue) \
+        static bool FromAtom(void*, const HTNAtom& inAtom, CppType& outValue) \
         { \
             if (!HTNAtomIsType<CppType>(inAtom)) \
                 return false; \
             outValue = HTNAtomGetValue<CppType>(inAtom); \
             return true; \
         } \
-        static bool ToAtom(const CppType& inValue, HTNAtom& outAtom) \
+        static bool ToAtom(void*, const CppType& inValue, HTNAtom& outAtom) \
         { \
             HTNAtomOwner Value(inValue); \
             return HTNAtom_AssignCopy(&outAtom, Value.Get()) != 0; \
@@ -189,7 +202,7 @@ struct HTNTypeTraits<const HtnSymbol*>
 template<>
 struct HTNTypeConverter<const HtnSymbol*>
 {
-    static bool FromAtom(const HTNAtom& inAtom, const HtnSymbol*& outValue)
+    static bool FromAtom(void*, const HTNAtom& inAtom, const HtnSymbol*& outValue)
     {
         if (!HTNAtomIsType<const HtnSymbol*>(inAtom))
             return false;
@@ -198,7 +211,7 @@ struct HTNTypeConverter<const HtnSymbol*>
         return true;
     }
 
-    static bool ToAtom(const HtnSymbol* const& inValue, HTNAtom& outAtom)
+    static bool ToAtom(void*, const HtnSymbol* const& inValue, HTNAtom& outAtom)
     {
         HTNAtomOwner Value(inValue);
         return HTNAtom_AssignCopy(&outAtom, Value.Get()) != 0;

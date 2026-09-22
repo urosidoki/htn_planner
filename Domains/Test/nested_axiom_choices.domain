@@ -1,0 +1,103 @@
+// Copyright (c) 2026 Jose Antonio Escribano joseantonioescribanoayllon@gmail.com
+
+(:domain NestedAxiomChoices top_level_domain
+    // Deliberately put callers before callees, including the axiom declarations.
+    (:method (out_backtrack) top_level_method
+        (choose (and (#outer_out ?value) (== ?value 2)) ((!selected ?value))))
+    (:method (io_backtrack) top_level_method
+        (choose (and (#outer_io ?value) (== ?value 2)) ((!selected ?value))))
+    (:method (deep_backtrack) top_level_method
+        (choose (and (#deep ?value) (== ?value 2)) ((!selected ?value))))
+    (:method (first_solution) top_level_method
+        (choose (and (#outer_io ?value)) ((!selected ?value))))
+    (:method (io_bound) top_level_method
+        (choose (and (seed ?value) (#outer_io ?value)) ((!selected ?value))))
+    (:method (io_mismatch) top_level_method
+        (wrong (and (#outer_io 3)) ((!unexpected)))
+        (fallback () ((!fallback))))
+    (:method (exhausted) top_level_method
+        (wrong (and (#outer_io ?value) (== ?value 3)) ((!unexpected)))
+        (fallback (and (#outer_io ?value)) ((!selected ?value))))
+    (:method (no_candidates) top_level_method
+        (wrong (and (#outer_out ?value)) ((!unexpected)))
+        (fallback () ((!fallback))))
+    (:method (internal_filter) top_level_method
+        (choose (and (#filtered 2 ?value)) ((!selected ?value))))
+    (:method (pair_backtrack) top_level_method
+        (choose (and (#outer_pair ?value ?state) (== ?value 2) (== ?state 10))
+                ((!pair ?value ?state))))
+    (:method (pair_bound) top_level_method
+        (choose (and (seed_state ?state) (#outer_pair ?value ?state) (== ?value 2))
+                ((!pair ?value ?state))))
+    (:method (two_calls) top_level_method
+        (choose (and (#outer_io ?first) (#outer_io ?second) (== ?first 2) (== ?second 2))
+                ((!pair ?first ?second))))
+    (:method (string_backtrack) top_level_method
+        (choose (and (#outer_text ?text) (== ?text "second candidate with owned string storage"))
+                ((!selected ?text))))
+
+    (:method (out_literal) top_level_method
+        (choose (and (#outer_out 2)) ((!selected 2))))
+    (:method (out_arithmetic) top_level_method
+        (choose (and (#outer_out (++ 1))) ((!selected 2))))
+    (:method (out_bound) top_level_method
+        (choose (and (seed ?value) (#outer_out ?value)) ((!selected ?value))))
+    (:method (out_mismatch) top_level_method
+        (wrong (and (#outer_out 3)) ((!unexpected)))
+        (fallback () ((!fallback))))
+    (:method (out_owned_literal) top_level_method
+        (choose (and (#outer_text "second candidate with owned string storage")) ((!selected 2))))
+    (:method (alt_preserves_bound) top_level_method
+        (choose (and (alt (candidate ?value))
+            (or (and (#outer_out ?value) (== ?value 9)) (== ?value 1))) ((!selected ?value))))
+    (:method (alias_outputs) top_level_method
+        (choose (and (#alias_pair ?value ?value)) ((!selected ?value))))
+    (:method (nested_and) top_level_method
+        (choose (and (#nested_and_choice ?value) (== ?value 2)) ((!selected ?value))))
+    (:method (alt_choice) top_level_method
+        (choose (and (#alt_choice ?value) (== ?value 2)) ((!selected ?value))))
+    (:method (or_cut) top_level_method
+        (wrong (and (#or_choice ?value) (== ?value 2)) ((!unexpected)))
+        (fallback () ((!fallback))))
+    (:method (not_scope) top_level_method
+        (choose (and (#not_choice ?value) (== ?value 2)) ((!selected ?value))))
+    (:method (effects) top_level_method
+        (choose (and (#effects ?value) (== ?value 2)) ((!selected ?value))))
+    (:method (effects_exhausted) top_level_method
+        (wrong (and (#effects ?value) (== ?value 3)) ((!unexpected)))
+        (fallback () ((!fallback))))
+    (:method (effects_nested) top_level_method
+        (choose (and (#effects_outer ?value) (== ?value 2)) ((!selected ?value))))
+    (:method (qualified_or) top_level_method
+        (choose (or (#NestedAxiomChoices::always_true) (call axiom_trace 99)) ((!selected 2))))
+    (:method (effects_alt_exhausted) top_level_method
+        (wrong (and (#effects_alt ?value) (== ?value 9)) ((!unexpected)))
+        (fallback () ((!fallback))))
+    (:axiom (effects_alt ?out_value)
+        (alt (and (candidate ?out_value) (call axiom_trace ?out_value))
+             (and (call axiom_trace 10) (first_candidate ?out_value))))
+    (:axiom (always_true) ())
+    (:axiom (alias_pair ?out_a ?out_b) (and (pair_candidate ?out_a ?out_b)))
+    (:axiom (nested_and_choice ?out_value) (and (and (#outer_out ?out_value))))
+    (:axiom (alt_choice ?out_value) (alt (first_candidate ?out_value) (candidate ?out_value)))
+    (:axiom (or_choice ?out_value) (or (candidate ?out_value) (first_candidate ?out_value)))
+    (:axiom (not_choice ?out_value)
+        (and (not (and (candidate ?out_value) (== ?out_value 3))) (candidate ?out_value)))
+    (:axiom (effects ?out_value)
+        (and (call axiom_trace 0) (?prefix (call axiom_value))
+             (candidate ?out_value) (call axiom_trace ?out_value) (== ?prefix 42)))
+    (:axiom (effects_outer ?out_value) (and (call axiom_trace 10) (#effects ?out_value)))
+
+    (:axiom (deep ?io_value) (and (#outer_io ?io_value)))
+    (:axiom (outer_out ?out_value) (and (#inner_out ?out_value)))
+    (:axiom (outer_io ?io_value) (and (#inner_io ?io_value)))
+    (:axiom (outer_pair ?out_value ?io_state) (and (#inner_pair ?out_value ?io_state)))
+    (:axiom (filtered ?inp_expected ?out_value)
+        (and (#outer_out ?out_value) (== ?out_value ?inp_expected)))
+    (:axiom (outer_text ?io_text) (and (#inner_text ?io_text)))
+    (:axiom (inner_out ?out_value) (and (candidate ?out_value)))
+    (:axiom (inner_io ?io_value) (and (candidate ?io_value)))
+    (:axiom (inner_pair ?out_value ?io_state)
+        (and (#outer_out ?out_value) (state ?io_state)))
+    (:axiom (inner_text ?io_text) (and (text_candidate ?io_text)))
+)

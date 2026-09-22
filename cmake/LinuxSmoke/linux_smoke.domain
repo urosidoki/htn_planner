@@ -1,0 +1,8 @@
+// Copyright (c) 2026 Jose Antonio Escribano joseantonioescribanoayllon@gmail.com
+(:domain LinuxSmoke top_level_domain
+    (:method (run) top_level_method
+        (choose (and (#candidate_value (++ 1))) ((!selected 2))))
+    (:method (no_plan) top_level_method
+        (never (and (== 1 2)) ((!unexpected))))
+    (:axiom (candidate_value ?out_value) (and (candidate ?out_value)))
+)

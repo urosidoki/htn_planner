@@ -12,17 +12,16 @@
 
 #include <stdint.h>
 
-// Revision 3 exposes the execution reset used by ProfileDetailed generated domains.
-// Rebuild hosts and
-// domain modules together; the planner descriptor ABI and service exports are unchanged.
+// Revision 6 passes the execution descriptor, including missing-callterm policy and callback.
+// Rebuild hosts, bridge and domain modules together; the planner ABI also advances.
 #if defined(HTN_DEBUG_DECOMPOSITION) && defined(HTN_GENERATED_EXECUTION_PROFILING)
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485B0003)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485B0006)
 #elif defined(HTN_DEBUG_DECOMPOSITION)
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x48590003)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x48590006)
 #elif defined(HTN_GENERATED_EXECUTION_PROFILING)
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485A0003)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485A0006)
 #else
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x48580003)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x48580006)
 #endif
 
 #ifdef _WIN32
@@ -62,7 +61,8 @@
     X(void, HTNWorldState_BeginGeneratedFactRowCursor, (const void* tables, uint32_t count, HTNGeneratedFactRowCursor* out_cursor), (tables, count, out_cursor)) \
     X(int, HTNWorldState_NextGeneratedFactRow, (HTNGeneratedFactRowCursor* cursor, const HTNAtom** out_arguments), (cursor, out_arguments)) \
     X(HTNGeneratedCallTerm, HTNCallTermRegistry_ResolveGeneratedCallTerm, (const HTNCallTermBindingContext* context, const char* name), (context, name)) \
-    X(int, HTNCallTermRegistry_InvokeGeneratedCallTerm, (const HTNCallTermBindingContext* context, const HTNGeneratedCallTerm* callterm, const HTNAtom* const* arguments, uint32_t count, HTNAtom* out_result), (context, callterm, arguments, count, out_result)) \
+    X(int, HTNCallTermRegistry_InvokeGeneratedCallTerm, (const HTNGeneratedPlannerContext* context, const HTNGeneratedCallTerm* callterm, const HTNAtom* const* arguments, uint32_t count, HTNAtom* out_result), (context, callterm, arguments, count, out_result)) \
+    X(int, HTNCallTermRegistry_InvokeGeneratedCallTermWithSource, (const HTNGeneratedPlannerContext* context, const HTNGeneratedCallTerm* callterm, const HTNAtom* const* arguments, uint32_t count, HTNAtom* out_result, const HTNCallTermSource* source), (context, callterm, arguments, count, out_result, source)) \
     X(HTNGeneratedBacktrackingOverflow*, HTNGeneratedBacktracking_CreateOverflow, (void), ()) \
     X(void, HTNGeneratedBacktracking_ResetOverflow, (HTNGeneratedBacktrackingOverflow* overflow), (overflow)) \
     X(void, HTNGeneratedBacktracking_DestroyOverflow, (HTNGeneratedBacktrackingOverflow* overflow), (overflow)) \

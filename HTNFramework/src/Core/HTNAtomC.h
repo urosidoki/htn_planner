@@ -81,6 +81,8 @@ struct HTNAtom
        sCreateCall returns an owning atom; the caller must pair it with sDestroy. */
     template<typename... TArguments>
     static HTNAtom sCreateCall(const HtnSymbol* inHead, TArguments&&... inArguments);
+    template<typename... TArguments>
+    static HTNAtom sCreateCallWithContext(void* inClientContext, const HtnSymbol* inHead, TArguments&&... inArguments);
     static void sDestroy(HTNAtom& ioAtom);
 #endif
 };

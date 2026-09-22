@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Core/HTNBacktrackingMode.h"
+#include "Core/HTNMissingCallTerm.h"
 
 /*
  * Input/output descriptor for one generated HTN call decomposition.
@@ -44,4 +45,8 @@ typedef struct HTNPlannerExecutionContext
     // This field does not exist in non-debug builds.
     HTNGeneratedDebugger* GeneratedDebugger;
 #endif
+    // Borrowed client services for this execution and its synchronous callbacks.
+    void* ClientContext;
+    HTNMissingCallTermPolicy MissingCallTermPolicy;
+    HTNMissingCallTermCallback MissingCallTermCallback;
 } HTNPlannerExecutionContext;

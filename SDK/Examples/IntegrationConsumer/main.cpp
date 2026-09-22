@@ -16,6 +16,7 @@ int main()
         return 1;
 
     HTNPlanningUnit PlanningUnit(DatabaseHook, PlannerHook, HtnSymbol::sGetSymbol("run"));
+    PlanningUnit.GetExecutionContext().MissingCallTermPolicy = HTNMissingCallTermPolicy::FailSilently;
 #ifdef HTN_DEBUG_DECOMPOSITION
     HTNGeneratedDebugger Debugger;
     Debugger.SetEnabled(true);

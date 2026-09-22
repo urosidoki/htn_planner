@@ -2,6 +2,7 @@
 
 #include "Translator/HTNCompilerIRBuilder.h"
 
+#include "Core/HTNDomainSyntax.h"
 #include "Translator/HTNCompilerAST.h"
 
 #include <algorithm>
@@ -139,7 +140,9 @@ std::string FormatDomainTask(const AST::Task& inNode)
 {
     const bool IsPrimitive = inNode.Kind == AST::TaskKind::Primitive;
     const bool IsDeferred = inNode.Kind == AST::TaskKind::Deferred;
-    return "(" + std::string(IsPrimitive ? "!" : (IsDeferred ? "#" : "")) + FormatDomainValueExpression(*inNode.GetIDNode()) +
+    const char Prefix = IsPrimitive ? HTNPrimitiveTaskPrefix :
+        (IsDeferred ? HTNDeferredCallPrefix : '\0');
+    return "(" + (Prefix != '\0' ? std::string(1u, Prefix) : std::string()) + FormatDomainValueExpression(*inNode.GetIDNode()) +
         FormatDomainArguments(inNode.GetArgumentNodes()) + ")";
 }
 
@@ -232,7 +235,7 @@ public:
             Methods.push_back(Record);
         }
 
-        // A method referenced through #call(...) must be reachable by the generated
+        // A method referenced through &call(...) must be reachable by the generated
         // decompose-call dispatch, but it remains semantically distinct from an explicit
         // top-level method. The linker has already resolved and validated these calls.
         for (const TaskRecord& Task : Tasks)
@@ -242,7 +245,7 @@ public:
 
             for (MethodRecord& Method : Methods)
             {
-                if (Method.Id != Task.Id)
+                if (Method.Id != Task.Id || Method.ParameterCount != Task.ArgumentCount)
                     continue;
                 Method.IsExternallyDecomposable = 1u;
                 AllocatePreparedSymbolSlot(Method.Id);
@@ -552,9 +555,9 @@ public:
         const std::string Id = HTNAtomToString(inNode.GetIDNode()->GetValue(), false);
         Record.Id = Strings.Add(Id);
         if (Record.Kind == HTN_TASK_PRIMITIVE)
-            Record.PlanStepHeadSymbolSlot = AllocatePlanStepSymbolSlot('!', Id);
+            Record.PlanStepHeadSymbolSlot = AllocatePlanStepSymbolSlot(HTNPrimitiveTaskPrefix, Id);
         else if (Record.Kind == HTN_TASK_DEFERRED)
-            Record.PlanStepHeadSymbolSlot = AllocatePlanStepSymbolSlot('#', Id);
+            Record.PlanStepHeadSymbolSlot = AllocatePlanStepSymbolSlot(HTNDeferredCallPrefix, Id);
         SetSource(Record, inNode);
 
         std::vector<TaskCallExpressionRecord> Calls;
@@ -691,7 +694,7 @@ bool ResolveCompileTimeReferences(Builder& ioBuilder)
         if (Condition.Kind != HTN_CONDITION_AXIOM)
             continue;
         const auto AxiomIt = std::find_if(ioBuilder.Axioms.begin(), ioBuilder.Axioms.end(),
-            [&Condition](const AxiomRecord& Axiom) { return Axiom.Id == Condition.Id; });
+            [&Condition](const AxiomRecord& Axiom) { return Axiom.Id == Condition.Id && Axiom.ParameterCount == Condition.ArgumentCount; });
         if (AxiomIt == ioBuilder.Axioms.end())
         {
             ioBuilder.SetError("Generated axiom reference could not be resolved at translation time");
@@ -734,7 +737,7 @@ bool ValidateCallTermCondition(const HTNCompilerIR& inBuilder, uint32 inConditio
     {
         const AxiomRecord* Axiom = nullptr;
         for (const AxiomRecord& Candidate : inBuilder.Axioms)
-            if (Candidate.Id == Condition.Id) { Axiom = &Candidate; break; }
+            if (Candidate.Id == Condition.Id && Candidate.ParameterCount == Condition.ArgumentCount) { Axiom = &Candidate; break; }
         if (!Axiom)
             return true;
         const uint32 Count = std::min(Axiom->ParameterCount, Condition.ArgumentCount);

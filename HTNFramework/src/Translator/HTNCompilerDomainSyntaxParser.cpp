@@ -2,6 +2,7 @@
 
 #include "Translator/HTNCompilerDomainSyntaxParser.h"
 
+#include "Core/HTNDomainSyntax.h"
 #include "Core/HtnSymbol.h"
 #include "Domain/Diagnostics/HTNDiagnosticSink.h"
 #include "Translator/HTNCompilerDomainLexer.h"
@@ -17,7 +18,7 @@ namespace
 namespace AST = HTNCompilerAST;
 using Type = HTNTokenType;
 thread_local HTNSourceRange ErrorRange;
-thread_local std::string ErrorMessage;
+thread_local HTNParserError Error;
 
 struct Form
 {
@@ -28,16 +29,16 @@ struct Form
     std::vector<Form> Items;
 };
 
-void Invalid(const char* inMessage)
+void Invalid(HTNParserErrorCode inCode, const std::string& inMessage)
 {
-    if (ErrorMessage.empty()) ErrorMessage = inMessage;
+    if (!Error.HasError()) Error = {inCode, inMessage, ErrorRange};
 }
 
 Form ReadForm(const std::vector<HTNToken>& inTokens, size_t& ioPosition)
 {
     if (ioPosition >= inTokens.size())
     {
-        Invalid("Unexpected end of compiler syntax");
+        Invalid(HTNParserErrorCode::TokenOutOfBounds, "Unexpected end of compiler syntax");
         return {};
     }
     const HTNToken& Token = inTokens[ioPosition++];
@@ -48,7 +49,7 @@ Form ReadForm(const std::vector<HTNToken>& inTokens, size_t& ioPosition)
     Result.Range = Token.GetSourceRange();
     if (Result.TokenType == Type::RIGHT_PARENTHESIS || Result.TokenType == Type::END_OF_FILE)
     {
-        Invalid("Unexpected compiler syntax token");
+        Invalid(HTNParserErrorCode::UnexpectedToken, "Unexpected compiler syntax token");
         return {};
     }
     if (Result.TokenType != Type::LEFT_PARENTHESIS) return Result;
@@ -58,15 +59,15 @@ Form ReadForm(const std::vector<HTNToken>& inTokens, size_t& ioPosition)
     {
         if (inTokens[ioPosition].GetType() == Type::END_OF_FILE)
         {
-            Invalid("Unclosed compiler syntax list");
+            Invalid(HTNParserErrorCode::UnclosedList, "Unclosed compiler syntax list");
             return {};
         }
         Result.Items.push_back(ReadForm(inTokens, ioPosition));
-        if (!ErrorMessage.empty()) return {};
+        if (Error.HasError()) return {};
     }
     if (ioPosition >= inTokens.size())
     {
-        Invalid("Unclosed compiler syntax list");
+        Invalid(HTNParserErrorCode::UnclosedList, "Unclosed compiler syntax list");
         return {};
     }
     Result.Range.End = inTokens[ioPosition++].GetSourceRange().End;
@@ -77,7 +78,7 @@ const Form& At(const std::vector<Form>& inItems, size_t inIndex)
 {
     if (inIndex >= inItems.size())
     {
-        Invalid("Incomplete compiler syntax");
+        Invalid(HTNParserErrorCode::IncompleteSyntax, "Incomplete compiler syntax");
         static const Form Empty;
         return Empty;
     }
@@ -93,7 +94,7 @@ std::string Name(const Form& inForm)
 {
     if (!Is(inForm, Type::IDENTIFIER))
     {
-        Invalid("Expected compiler identifier");
+        Invalid(HTNParserErrorCode::ExpectedIdentifier, "Expected compiler identifier");
         return {};
     }
     return HTNAtomGetValue<std::string>(*inForm.Atom.Get());
@@ -121,14 +122,14 @@ HTNAtomOwner Literal(const Form& inForm)
     {
         if (inForm.Items.empty())
         {
-            Invalid("Empty literal list");
+            Invalid(HTNParserErrorCode::EmptyLiteralList, "Empty literal list");
             return HTNAtomOwner("");
         }
         HTNAtomOwner Result;
         for (const Form& Child : inForm.Items)
         {
             const HTNAtomOwner Element = Literal(Child);
-            if (!ErrorMessage.empty()) return HTNAtomOwner("");
+            if (Error.HasError()) return HTNAtomOwner("");
             Result.PushBackElementToList(*Element.Get());
         }
         return Result;
@@ -138,7 +139,7 @@ HTNAtomOwner Literal(const Form& inForm)
     if (!Is(inForm, Type::TRUE) && !Is(inForm, Type::FALSE) &&
         !Is(inForm, Type::NUMBER) && !Is(inForm, Type::STRING))
     {
-        Invalid("Expected compiler literal");
+        Invalid(HTNParserErrorCode::ExpectedLiteral, "Expected compiler literal");
         return HTNAtomOwner("");
     }
     return inForm.Atom;
@@ -152,7 +153,7 @@ AST::ValuePtr Argument(const std::vector<Form>& inItems, size_t& ioIndex, uint32
     if (Is(Head, Type::QUESTION_MARK) || Is(Head, Type::AT))
     {
         const Form& Id = At(inItems, ioIndex++);
-        if (!ErrorMessage.empty()) return {};
+        if (Error.HasError()) return {};
         Result->Kind = Is(Head, Type::QUESTION_MARK) ? AST::ValueKind::Variable : AST::ValueKind::Constant;
         Result->Atom = HTNAtomOwner(Name(Id));
         Result->Range.End = Id.Range.End;
@@ -176,7 +177,7 @@ AST::ValuePtr Argument(const std::vector<Form>& inItems, size_t& ioIndex, uint32
         for (size_t I = 1; I < Head.Items.size();)
         {
             Result->ArithmeticOperands.push_back(Argument(Head.Items, I, inFileIndex));
-            if (!ErrorMessage.empty()) return {};
+            if (Error.HasError()) return {};
         }
         const size_t Count = Result->ArithmeticOperands.size();
         const bool ValidArity = (Result->ArithmeticOp == AST::ArithmeticOperator::Increment ||
@@ -185,7 +186,7 @@ AST::ValuePtr Argument(const std::vector<Form>& inItems, size_t& ioIndex, uint32
             Result->ArithmeticOp == AST::ArithmeticOperator::Modulo ? Count == 2u : Count >= 2u;
         if (!ValidArity)
         {
-            Invalid("Invalid arithmetic expression arity");
+            Invalid(HTNParserErrorCode::InvalidArithmeticArity, "Invalid arithmetic expression arity");
             return {};
         }
     }
@@ -193,12 +194,12 @@ AST::ValuePtr Argument(const std::vector<Form>& inItems, size_t& ioIndex, uint32
     {
         Result->Kind = AST::ValueKind::Call;
         Result->CallId = Identifier(At(Head.Items, 1), inFileIndex);
-        if (!ErrorMessage.empty()) return {};
+        if (Error.HasError()) return {};
         Result->Atom = Result->CallId->GetValue();
         for (size_t I = 2; I < Head.Items.size();)
         {
             Result->CallArguments.push_back(Argument(Head.Items, I, inFileIndex));
-            if (!ErrorMessage.empty()) return {};
+            if (Error.HasError()) return {};
         }
     }
     else
@@ -206,7 +207,7 @@ AST::ValuePtr Argument(const std::vector<Form>& inItems, size_t& ioIndex, uint32
         Result->Kind = AST::ValueKind::Literal;
         Result->Atom = Literal(Head);
     }
-    if (!ErrorMessage.empty()) return {};
+    if (Error.HasError()) return {};
     return Result;
 }
 
@@ -215,13 +216,13 @@ std::pair<AST::ValuePtr, size_t> QualifiedIdentifier(const std::vector<Form>& in
 {
     const Form& First = At(inItems, inStart);
     std::string Id = Name(First);
-    if (!ErrorMessage.empty()) return {{}, inStart};
+    if (Error.HasError()) return {{}, inStart};
     size_t Next = inStart + 1;
     if (Next + 2 < inItems.size() && Is(inItems[Next], Type::COLON) &&
         Is(inItems[Next + 1], Type::COLON))
     {
         Id += "::" + Name(inItems[Next + 2]);
-        if (!ErrorMessage.empty()) return {{}, inStart};
+        if (Error.HasError()) return {{}, inStart};
         Next += 3;
     }
     return {Identifier(First, inFileIndex, Id), Next};
@@ -232,7 +233,7 @@ AST::ConditionPtr Condition(const Form& inForm, uint32_t inFileIndex)
     ErrorRange = inForm.Range;
     if (!inForm.IsList || inForm.Items.empty())
     {
-        Invalid("Expected compiler condition");
+        Invalid(HTNParserErrorCode::ExpectedCondition, "Expected compiler condition");
         return {};
     }
     const auto& Items = inForm.Items;
@@ -249,7 +250,7 @@ AST::ConditionPtr Condition(const Form& inForm, uint32_t inFileIndex)
         for (size_t I = 1; I < Items.size(); ++I)
         {
             Result->Children.push_back(Condition(Items[I], inFileIndex));
-            if (!ErrorMessage.empty()) return {};
+            if (Error.HasError()) return {};
         }
         return Result;
     }
@@ -257,7 +258,7 @@ AST::ConditionPtr Condition(const Form& inForm, uint32_t inFileIndex)
     {
         if (Items.size() != 2u)
         {
-            Invalid("Invalid not condition");
+            Invalid(HTNParserErrorCode::InvalidNotCondition, "Invalid not condition");
             return {};
         }
         Result->Kind = AST::ConditionKind::Not;
@@ -280,11 +281,11 @@ AST::ConditionPtr Condition(const Form& inForm, uint32_t inFileIndex)
         for (size_t I = 1; I < Items.size();)
         {
             Result->Arguments.push_back(Argument(Items, I, inFileIndex));
-            if (!ErrorMessage.empty()) return {};
+            if (Error.HasError()) return {};
         }
         if (Result->Arguments.size() != 2u)
         {
-            Invalid("Comparison requires two arguments");
+            Invalid(HTNParserErrorCode::InvalidComparisonArity, "Comparison requires two arguments");
             return {};
         }
         return Result;
@@ -295,20 +296,20 @@ AST::ConditionPtr Condition(const Form& inForm, uint32_t inFileIndex)
     {
         Result->Kind = AST::ConditionKind::Call;
         Result->Output = Argument(Items, Index, inFileIndex);
-        if (!ErrorMessage.empty()) return {};
+        if (Error.HasError()) return {};
         const Form& Call = At(Items, Index);
         if (!Call.IsList || Call.Items.empty() || !Is(Call.Items[0], Type::CALL))
         {
-            Invalid("Expected bound call condition");
+            Invalid(HTNParserErrorCode::ExpectedBoundCall, "Expected bound call condition");
             return {};
         }
         Result->Id = Identifier(At(Call.Items, 1), inFileIndex);
         for (size_t I = 2; I < Call.Items.size();)
         {
             Result->Arguments.push_back(Argument(Call.Items, I, inFileIndex));
-            if (!ErrorMessage.empty()) return {};
+            if (Error.HasError()) return {};
         }
-        if (Index + 1 != Items.size()) Invalid("Unexpected bound call condition syntax");
+        if (Index + 1 != Items.size()) Invalid(HTNParserErrorCode::UnexpectedBoundCallSyntax, "Unexpected bound call condition syntax");
     }
     else if (Is(Items[Index], Type::CALL))
     {
@@ -317,7 +318,7 @@ AST::ConditionPtr Condition(const Form& inForm, uint32_t inFileIndex)
         for (size_t I = 2; I < Items.size();)
         {
             Result->Arguments.push_back(Argument(Items, I, inFileIndex));
-            if (!ErrorMessage.empty()) return {};
+            if (Error.HasError()) return {};
         }
     }
     else
@@ -325,20 +326,20 @@ AST::ConditionPtr Condition(const Form& inForm, uint32_t inFileIndex)
         const bool IsAxiom = Is(Items[Index], Type::HASH);
         if (IsAxiom) ++Index;
         auto [Id, Next] = QualifiedIdentifier(Items, Index, inFileIndex);
-        if (!ErrorMessage.empty()) return {};
+        if (Error.HasError()) return {};
         Result->Id = std::move(Id);
         Index = Next;
         if (!IsAxiom && HTNAtomToString(Result->Id->GetValue(), false).find("::") != std::string::npos)
-            Invalid("Fact condition cannot be qualified");
+            Invalid(HTNParserErrorCode::QualifiedFact, "Fact condition cannot be qualified");
         for (; Index < Items.size();)
         {
             Result->Arguments.push_back(Argument(Items, Index, inFileIndex));
-            if (!ErrorMessage.empty()) return {};
+            if (Error.HasError()) return {};
         }
         const std::string IdName = HTNAtomToString(Result->Id->GetValue(), false);
         if (!IsAxiom && (IdName == "split_list" || IdName == "split_list_front" || IdName == "split_list_back"))
         {
-            if (Result->Arguments.size() != 3u) Invalid("split_list requires three arguments");
+            if (Result->Arguments.size() != 3u) Invalid(HTNParserErrorCode::InvalidSplitArity, "split_list requires three arguments");
             Result->Kind = AST::ConditionKind::Split;
             Result->Operator = IdName == "split_list_back" ? 2u : (IdName == "split_list_front" ? 1u : 0u);
             if (Result->Operator == 2u && Result->Arguments.size() == 3u)
@@ -355,14 +356,14 @@ AST::ConditionPtr Body(const Form& inForm, uint32_t inFileIndex)
     ErrorRange = inForm.Range;
     if (!inForm.IsList)
     {
-        Invalid("Expected compiler condition body");
+        Invalid(HTNParserErrorCode::ExpectedConditionBody, "Expected compiler condition body");
         return {};
     }
     if (inForm.Items.empty()) return {};
     if (Is(inForm.Items.front(), Type::AND) || Is(inForm.Items.front(), Type::OR) ||
         Is(inForm.Items.front(), Type::ALT))
         return Condition(inForm, inFileIndex);
-    Invalid("Expected and, or or alt condition body");
+    Invalid(HTNParserErrorCode::ExpectedConditionBody, "Expected and, or or alt condition body");
     return {};
 }
 
@@ -371,7 +372,7 @@ AST::TaskPtr Task(const Form& inForm, uint32_t inFileIndex)
     ErrorRange = inForm.Range;
     if (!inForm.IsList || inForm.Items.empty())
     {
-        Invalid("Expected compiler task");
+        Invalid(HTNParserErrorCode::ExpectedTask, "Expected compiler task");
         return {};
     }
     auto Result = std::make_shared<AST::Task>();
@@ -382,22 +383,27 @@ AST::TaskPtr Task(const Form& inForm, uint32_t inFileIndex)
         Result->Kind = AST::TaskKind::Primitive;
         ++Index;
     }
-    else if (Is(inForm.Items[Index], Type::HASH))
+    else if (Is(inForm.Items[Index], Type::AMPERSAND))
     {
         Result->Kind = AST::TaskKind::Deferred;
         ++Index;
     }
+    else if (Is(inForm.Items[Index], Type::HASH))
+    {
+        Invalid(HTNParserErrorCode::AxiomPrefixInTaskList, HTNMakeAxiomPrefixInTaskDiagnostic());
+        return {};
+    }
     else Result->Kind = AST::TaskKind::Compound;
     auto [Id, Next] = QualifiedIdentifier(inForm.Items, Index, inFileIndex);
-    if (!ErrorMessage.empty()) return {};
+    if (Error.HasError()) return {};
     if (Result->Kind == AST::TaskKind::Primitive &&
         HTNAtomToString(Id->GetValue(), false).find("::") != std::string::npos)
-        Invalid("Primitive task cannot be qualified");
+        Invalid(HTNParserErrorCode::QualifiedPrimitiveTask, "Primitive task cannot be qualified");
     Result->Id = std::move(Id);
     for (Index = Next; Index < inForm.Items.size();)
     {
         Result->Arguments.push_back(Argument(inForm.Items, Index, inFileIndex));
-        if (!ErrorMessage.empty()) return {};
+        if (Error.HasError()) return {};
     }
     return Result;
 }
@@ -408,18 +414,18 @@ std::shared_ptr<const AST::Branch> Branch(const Form& inForm, uint32_t inFileInd
     if (!inForm.IsList || inForm.Items.size() != 3u || !inForm.Items[1].IsList ||
         !inForm.Items[2].IsList)
     {
-        Invalid("Expected compiler branch");
+        Invalid(HTNParserErrorCode::ExpectedBranch, "Expected compiler branch");
         return {};
     }
     auto Result = std::make_shared<AST::Branch>();
     Source(*Result, inForm.Range, inFileIndex);
     Result->Id = Name(inForm.Items[0]);
     Result->Precondition = Body(inForm.Items[1], inFileIndex);
-    if (!ErrorMessage.empty()) return {};
+    if (Error.HasError()) return {};
     for (const Form& Child : inForm.Items[2].Items)
     {
         Result->Tasks.push_back(Task(Child, inFileIndex));
-        if (!ErrorMessage.empty()) return {};
+        if (Error.HasError()) return {};
     }
     return Result;
 }
@@ -429,7 +435,7 @@ bool ParseDeclaration(const Form& inForm, uint32_t inFileIndex, AST::Domain& ioD
     ErrorRange = inForm.Range;
     if (!inForm.IsList || inForm.Items.size() < 2 || !Is(inForm.Items[0], Type::COLON))
     {
-        Invalid("Expected compiler declaration");
+        Invalid(HTNParserErrorCode::ExpectedDeclaration, "Expected compiler declaration");
         return false;
     }
     const auto& Items = inForm.Items;
@@ -448,7 +454,7 @@ bool ParseDeclaration(const Form& inForm, uint32_t inFileIndex, AST::Domain& ioD
         else if (Index < Items.size() && Is(Items[Index], Type::HTN_OVERRIDES))
         {
             Group->OverridesDomain = Name(At(Items, Index + 1));
-            if (!ErrorMessage.empty()) return false;
+            if (Error.HasError()) return false;
             Index += 2;
         }
         for (; Index < Items.size(); ++Index)
@@ -456,19 +462,19 @@ bool ParseDeclaration(const Form& inForm, uint32_t inFileIndex, AST::Domain& ioD
             const Form& Entry = Items[Index];
             if (!Entry.IsList || Entry.Items.size() != 2u)
             {
-                Invalid("Expected compiler constant");
+                Invalid(HTNParserErrorCode::ExpectedConstant, "Expected compiler constant");
                 return false;
             }
             auto Constant = std::make_shared<AST::Constant>();
             Source(*Constant, Entry.Range, inFileIndex);
             Constant->Id = Name(At(Entry.Items, 0));
-            if (!ErrorMessage.empty()) return false;
+            if (Error.HasError()) return false;
             size_t ValueIndex = 1;
             Constant->ValueNode = Argument(Entry.Items, ValueIndex, inFileIndex);
-            if (!ErrorMessage.empty()) return false;
+            if (Error.HasError()) return false;
             if (Constant->ValueNode->Kind != AST::ValueKind::Literal || ValueIndex != Entry.Items.size())
             {
-                Invalid("Expected constant literal");
+                Invalid(HTNParserErrorCode::ExpectedConstantLiteral, "Expected constant literal");
                 return false;
             }
             Group->Constants.push_back(std::move(Constant));
@@ -480,15 +486,15 @@ bool ParseDeclaration(const Form& inForm, uint32_t inFileIndex, AST::Domain& ioD
         const bool IsAxiom = Is(Items[1], Type::HTN_AXIOM);
         const Form& Signature = At(Items, 2);
         const std::string Id = Name(At(Signature.Items, 0));
-        if (!ErrorMessage.empty()) return false;
+        if (Error.HasError()) return false;
         std::vector<AST::ValuePtr> Parameters;
         for (size_t I = 1; I < Signature.Items.size();)
         {
             auto Parameter = Argument(Signature.Items, I, inFileIndex);
-            if (!ErrorMessage.empty()) return false;
+            if (Error.HasError()) return false;
             if (Parameter->Kind != AST::ValueKind::Variable)
             {
-                Invalid("Expected parameter variable");
+                Invalid(HTNParserErrorCode::ExpectedParameterVariable, "Expected parameter variable");
                 return false;
             }
             Parameters.push_back(std::move(Parameter));
@@ -510,14 +516,14 @@ bool ParseDeclaration(const Form& inForm, uint32_t inFileIndex, AST::Domain& ioD
         else if (Index < Items.size() && Is(Items[Index], Type::HTN_OVERRIDES))
         {
             OverridesDomain = Name(At(Items, Index + 1));
-            if (!ErrorMessage.empty()) return false;
+            if (Error.HasError()) return false;
             Index += 2;
         }
         if (IsAxiom)
         {
             if (TopLevel)
             {
-                Invalid("Axiom cannot be a top_level_method");
+                Invalid(HTNParserErrorCode::InvalidAxiomVisibility, "Axiom cannot be a top_level_method");
                 return false;
             }
             auto Axiom = std::make_shared<AST::Axiom>();
@@ -527,10 +533,10 @@ bool ParseDeclaration(const Form& inForm, uint32_t inFileIndex, AST::Domain& ioD
             Axiom->OverridesDomain = OverridesDomain;
             Axiom->Parameters = std::move(Parameters);
             Axiom->Body = Body(At(Items, Index), inFileIndex);
-            if (!ErrorMessage.empty()) return false;
+            if (Error.HasError()) return false;
             if (Index + 1 != Items.size())
             {
-                Invalid("Unexpected axiom syntax");
+                Invalid(HTNParserErrorCode::UnexpectedAxiomSyntax, "Unexpected axiom syntax");
                 return false;
             }
             ioDomain.Axioms.push_back(std::move(Axiom));
@@ -547,14 +553,14 @@ bool ParseDeclaration(const Form& inForm, uint32_t inFileIndex, AST::Domain& ioD
             for (; Index < Items.size(); ++Index)
             {
                 Method->Branches.push_back(Branch(Items[Index], inFileIndex));
-                if (!ErrorMessage.empty()) return false;
+                if (Error.HasError()) return false;
             }
             ioDomain.Methods.push_back(std::move(Method));
         }
     }
     else
     {
-        Invalid("Unknown compiler declaration");
+        Invalid(HTNParserErrorCode::UnknownDeclaration, "Unknown compiler declaration");
         return false;
     }
     return true;
@@ -567,18 +573,21 @@ bool HTNParseCompilerDomainSyntax(const std::string& inSource,
                                   std::string& outError,
                                   HTNSourceRange* outErrorRange,
                                   HTNDiagnosticSink* outDiagnostics,
-                                  const std::string& inFilePath)
+                                  const std::string& inFilePath,
+                                  HTNParserError* outParseError)
 {
     outDomain = {};
     outError.clear();
+    if (outParseError) *outParseError = {};
     ErrorRange = {};
-    ErrorMessage.clear();
+    Error = {};
     if (outErrorRange) *outErrorRange = {};
     const auto Fail = [&]()
     {
         outDomain = {};
-        outError = ErrorMessage;
-        if (outErrorRange) *outErrorRange = ErrorRange;
+        outError = Error.Message;
+        if (outParseError) *outParseError = Error;
+        if (outErrorRange) *outErrorRange = Error.Range;
         return false;
     };
     std::vector<HTNToken> Tokens;
@@ -586,25 +595,34 @@ bool HTNParseCompilerDomainSyntax(const std::string& inSource,
     HTNCompilerDomainLexer Lexer;
     if (!Lexer.Lex(Context))
     {
-        Invalid("Compiler source lexing failed");
+        Error.Message = Context.GetLastErrorMessage().empty()
+            ? "Compiler source lexing failed"
+            : Context.GetLastErrorMessage();
+        ErrorRange = Context.GetLastErrorRange();
+        Error.Code = HTNParserErrorCode::LexingFailed;
+        Error.Range = ErrorRange;
+        if (outDiagnostics)
+            outDiagnostics->Error(inFilePath, Error.Message,
+                                  HTNDiagnosticRecovery::Fatal, ErrorRange);
         return Fail();
     }
     size_t Position = 0;
     const Form Root = ReadForm(Tokens, Position);
-    if (!ErrorMessage.empty()) return Fail();
+    if (Error.HasError()) return Fail();
     if (Position >= Tokens.size() || Tokens[Position].GetType() != Type::END_OF_FILE)
     {
-        Invalid("Unexpected source after compiler domain");
+        if (Position < Tokens.size()) ErrorRange = Tokens[Position].GetSourceRange();
+        Invalid(HTNParserErrorCode::TrailingSource, "Unexpected source after compiler domain");
         return Fail();
     }
     if (!Root.IsList || Root.Items.size() < 3 || !Is(Root.Items[0], Type::COLON) ||
         !Is(Root.Items[1], Type::HTN_DOMAIN))
     {
-        Invalid("Expected compiler domain");
+        Invalid(HTNParserErrorCode::ExpectedDomain, "Expected compiler domain");
         return Fail();
     }
     outDomain.Id = Name(Root.Items[2]);
-    if (!ErrorMessage.empty()) return Fail();
+    if (Error.HasError()) return Fail();
     outDomain.Range = Root.Range;
     outDomain.FileIndex = inFileIndex;
     size_t Index = 3;
@@ -618,38 +636,30 @@ bool HTNParseCompilerDomainSyntax(const std::string& inSource,
         outDomain.IsBase = true;
         ++Index;
     }
-    int DeclarationStage = 0;
     bool Valid = true;
     for (; Index < Root.Items.size(); ++Index)
     {
         const Form& Declaration = Root.Items[Index];
         ErrorRange = Declaration.Range;
         if (!Declaration.IsList || Declaration.Items.size() < 2u)
-            Invalid("Expected compiler declaration");
+            Invalid(HTNParserErrorCode::ExpectedDeclaration, "Expected compiler declaration");
         else
         {
-            const int Stage = Is(Declaration.Items[1], Type::HTN_CONSTANTS) ? 0 :
-                (Is(Declaration.Items[1], Type::HTN_AXIOM) ? 1 :
-                 (Is(Declaration.Items[1], Type::HTN_METHOD) ? 2 : -1));
-            if (Stage < DeclarationStage) Invalid("Compiler declarations are out of order");
-            else
-            {
-                DeclarationStage = Stage;
-                ParseDeclaration(Declaration, inFileIndex, outDomain);
-            }
+            ParseDeclaration(Declaration, inFileIndex, outDomain);
         }
-        if (!ErrorMessage.empty())
+        if (Error.HasError())
         {
             if (Valid)
             {
-                outError = ErrorMessage;
-                if (outErrorRange) *outErrorRange = ErrorRange;
+                outError = Error.Message;
+                if (outParseError) *outParseError = Error;
+                if (outErrorRange) *outErrorRange = Error.Range;
             }
             if (outDiagnostics)
-                outDiagnostics->Error(inFilePath, ErrorMessage,
-                                      HTNDiagnosticRecovery::Recoverable, ErrorRange);
+                outDiagnostics->Error(inFilePath, Error.Message,
+                                      HTNDiagnosticRecovery::Recoverable, Error.Range);
             Valid = false;
-            ErrorMessage.clear();
+            Error = {};
         }
     }
     if (!Valid) outDomain = {};

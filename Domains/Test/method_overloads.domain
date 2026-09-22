@@ -1,0 +1,29 @@
+(:include "../Includes/overload_base.domain")
+(:domain MethodOverloads top_level_domain
+    (:method (select ?inp_value) overrides OverloadBase
+        (one () ((!override_one ?inp_value))))
+    (:method (select ?inp_left ?inp_right)
+        (two () ((!local_two ?inp_left ?inp_right))))
+    (:method (run) top_level_method
+        (all () ((select) (select 7) (select 8 9)
+                 (OverloadBase::select) (OverloadBase::select 10)
+                 (walk 0 2))))
+    (:method (run ?inp_value) top_level_method
+        (one () ((select ?inp_value))))
+    (:method (walk ?inp_index ?inp_count)
+        (continue (and (< ?inp_index ?inp_count)) ((walk (++ ?inp_index) ?inp_count)))
+        (finished () ((walk ?inp_index))))
+    (:method (walk ?inp_value)
+        (finish () ((!walk_done ?inp_value))))
+    (:method (deferred) top_level_method
+        (empty () ((&later))))
+    (:method (deferred ?inp_value) top_level_method
+        (one () ((&later ?inp_value))))
+    (:method (later) (empty () ((!later_zero))))
+    (:method (later ?inp_value) (one () ((!later_one ?inp_value))))
+    (:method (mixed) (private () ((!private_zero))))
+    (:method (mixed ?inp_value) top_level_method
+        (public () ((!public_one ?inp_value))))
+    (:method (defer_mixed) top_level_method
+        (private_call () ((&mixed))))
+)

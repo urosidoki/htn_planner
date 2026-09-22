@@ -93,7 +93,7 @@ struct HasRegisteredTypeConversion<T, std::void_t<decltype(HTNTypeTraits<T>::IsS
     : std::bool_constant<HTNTypeTraits<T>::IsSupported> {};
 
 template<typename T>
-inline int AssignCallArgument(HTNAtom& outAtom, T&& inValue)
+inline int AssignCallArgument(void* inClientContext, HTNAtom& outAtom, T&& inValue)
 {
     using TValue = std::decay_t<T>;
 
@@ -142,7 +142,7 @@ inline int AssignCallArgument(HTNAtom& outAtom, T&& inValue)
     }
     else if constexpr (HasRegisteredTypeConversion<TValue>::value)
     {
-        return HTNTypeConverter<TValue>::ToAtom(inValue, outAtom) ? 1 : 0;
+        return HTNTypeConverter<TValue>::ToAtom(inClientContext, inValue, outAtom) ? 1 : 0;
     }
     else
     {
@@ -154,6 +154,12 @@ inline int AssignCallArgument(HTNAtom& outAtom, T&& inValue)
 template<typename... TArguments>
 inline HTNAtom HTNAtom::sCreateCall(const HtnSymbol* inHead, TArguments&&... inArguments)
 {
+    return sCreateCallWithContext(nullptr, inHead, std::forward<TArguments>(inArguments)...);
+}
+
+template<typename... TArguments>
+inline HTNAtom HTNAtom::sCreateCallWithContext(void* inClientContext, const HtnSymbol* inHead, TArguments&&... inArguments)
+{
     constexpr size_t ArgumentCount = sizeof...(TArguments);
     std::array<HTNAtom, ArgumentCount> Arguments{};
     HTNAtom_InitRange(Arguments.data(), static_cast<uint32_t>(ArgumentCount));
@@ -161,7 +167,7 @@ inline HTNAtom HTNAtom::sCreateCall(const HtnSymbol* inHead, TArguments&&... inA
     size_t ArgumentIndex = 0u;
     int ArgumentsValid = 1;
     ((ArgumentsValid = ArgumentsValid && HTNAtomDetail::AssignCallArgument(
-        Arguments[ArgumentIndex++], std::forward<TArguments>(inArguments))), ...);
+        inClientContext, Arguments[ArgumentIndex++], std::forward<TArguments>(inArguments))), ...);
 
     HTNAtom Result;
     if (ArgumentsValid)

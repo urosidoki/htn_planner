@@ -4,8 +4,9 @@
 
 #ifdef HTN_DEBUG_DECOMPOSITION
 
-#include "Translator/HTNGeneratedDebug.h"
 #include "Core/HTNAtom.h"
+#include "Core/HTNDomainSyntax.h"
+#include "Translator/HTNGeneratedDebug.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -408,14 +409,22 @@ private:
         if ((inTask.kind == HTN_TASK_PRIMITIVE || inTask.kind == HTN_TASK_DEFERRED) &&
             inTask.plan_step_head_string_id != HTN_GENERATED_NO_INDEX)
         {
+            const char Prefix = inTask.kind == HTN_TASK_PRIMITIVE
+                ? HTNPrimitiveTaskPrefix : HTNDeferredCallPrefix;
+            const std::string Fallback = std::string(1u, Prefix) +
+                (inTask.kind == HTN_TASK_PRIMITIVE ? "primitive" : "deferred");
             Head = ResolveString(inDomain, inTask.plan_step_head_string_id,
-                                 inTask.kind == HTN_TASK_PRIMITIVE ? "!primitive" : "#deferred");
+                                 Fallback.c_str());
         }
         else
         {
-            Head = ResolveString(inDomain, inTask.id, inTask.kind == HTN_TASK_PRIMITIVE ? "!primitive" : "compound");
-            if (inTask.kind == HTN_TASK_PRIMITIVE && (Head.empty() || Head.front() != '!'))
-                Head.insert(Head.begin(), '!');
+            const std::string Fallback = inTask.kind == HTN_TASK_PRIMITIVE
+                ? std::string(1u, HTNPrimitiveTaskPrefix) + "primitive"
+                : "compound";
+            Head = ResolveString(inDomain, inTask.id, Fallback.c_str());
+            if (inTask.kind == HTN_TASK_PRIMITIVE &&
+                (Head.empty() || Head.front() != HTNPrimitiveTaskPrefix))
+                Head.insert(Head.begin(), HTNPrimitiveTaskPrefix);
         }
 
         AddTitleToken(ioNode, Node::TitleTokenKind::Normal, Head);
@@ -443,7 +452,8 @@ private:
             break;
         case HTN_CONDITION_AXIOM:
             AddTitleToken(ioNode, Node::TitleTokenKind::Result,
-                          std::string("#") + ResolveString(inDomain, inCondition.id, "axiom"));
+                          std::string(1u, HTNAxiomCallPrefix) +
+                              ResolveString(inDomain, inCondition.id, "axiom"));
             break;
         case HTN_CONDITION_CALL:
             AddTitleToken(ioNode, Node::TitleTokenKind::Result, "call");

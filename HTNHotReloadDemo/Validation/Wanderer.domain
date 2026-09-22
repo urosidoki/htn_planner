@@ -24,7 +24,7 @@
             (
                 (!say "reload-validation-@REVISION@")
                 (move_to_async ?from ?to)
-                (#talk_about_destination)
+                (&talk_about_destination)
                 (!after_destination_comment)
             )
         )

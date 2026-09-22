@@ -1,0 +1,4 @@
+(:domain AxiomOverloadBase base
+    (:axiom (gate) base (and (== 1 1)))
+    (:axiom (gate ?inp_value) base (and (== ?inp_value 3)))
+)

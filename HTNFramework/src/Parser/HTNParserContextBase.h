@@ -3,6 +3,7 @@
 #pragma once
 
 #include "HTNCoreMinimal.h"
+#include "Parser/HTNParserError.h"
 
 #include <string>
 #include <vector>
@@ -45,17 +46,17 @@ private:
     uint32 mPosition = 0;
 
 public:
-    // Stores the most recent parse error. Structured diagnostics need this even when logging is disabled.
-    void SetLastError(const std::string& inLastErrorMessage, const int32 inLastErrorRow, const int32 inLastErrorColumn);
+    void SetParseError(HTNParserErrorCode inCode, const std::string& inMessage,
+                       int32 inRow, int32 inColumn);
+    void ClearParseError() { mError = {}; }
+    const HTNParserError& GetParseError() const { return mError; }
+    HTNParserErrorCode GetParseErrorCode() const { return mError.Code; }
+    const std::string& GetLastErrorMessage() const { return mError.Message; }
+    int32 GetLastErrorRow() const { return mError.HasError() ? mError.Range.Begin.Line - 1 : -1; }
+    int32 GetLastErrorColumn() const { return mError.HasError() ? mError.Range.Begin.Column - 1 : -1; }
 
-    HTN_NODISCARD const std::string& GetLastErrorMessage() const;
-    HTN_NODISCARD int32 GetLastErrorRow() const;
-    HTN_NODISCARD int32 GetLastErrorColumn() const;
-
-protected:
-    std::string mLastErrorMessage;
-    int32       mLastErrorRow    = -1;
-    int32       mLastErrorColumn = -1;
+private:
+    HTNParserError mError;
 };
 
 inline void HTNParserContextBase::SetPosition(const uint32 inPosition)
@@ -73,24 +74,15 @@ inline uint32 HTNParserContextBase::GetPosition() const
     return mPosition;
 }
 
-inline void HTNParserContextBase::SetLastError(const std::string& inLastErrorMessage, const int32 inLastErrorRow, const int32 inLastErrorColumn)
+inline void HTNParserContextBase::SetParseError(const HTNParserErrorCode inCode,
+                                               const std::string& inMessage,
+                                               const int32 inRow,
+                                               const int32 inColumn)
 {
-    mLastErrorMessage = inLastErrorMessage;
-    mLastErrorRow     = inLastErrorRow;
-    mLastErrorColumn  = inLastErrorColumn;
-}
-
-inline const std::string& HTNParserContextBase::GetLastErrorMessage() const
-{
-    return mLastErrorMessage;
-}
-
-inline int32 HTNParserContextBase::GetLastErrorRow() const
-{
-    return mLastErrorRow;
-}
-
-inline int32 HTNParserContextBase::GetLastErrorColumn() const
-{
-    return mLastErrorColumn;
+    HTNSourceRange Range;
+    Range.Begin.Line = inRow + 1;
+    Range.Begin.Column = inColumn + 1;
+    Range.End = Range.Begin;
+    ++Range.End.Column;
+    mError = {inCode, inMessage, Range};
 }

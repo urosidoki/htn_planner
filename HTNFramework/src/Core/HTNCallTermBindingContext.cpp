@@ -4,6 +4,7 @@
 
 #include "Core/HTNCallTermRegistry.h"
 
+
 HTNCallTermBindingContext::HTNCallTermBindingContext(const HTNCallTermRegistry& inRegistry)
     : mRegistry(inRegistry)
 {

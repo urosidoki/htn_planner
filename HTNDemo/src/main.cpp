@@ -7,6 +7,7 @@
 #include "Core/HTNFileHelpers.h"
 #include "Core/HTNTask.h"
 #include "Core/HtnSymbol.h"
+#include "HTNDemoCallTermReporting.h"
 #include "HTNCoreMinimal.h"
 #include "Hook/HTNDatabaseHook.h"
 #include "Hook/HTNPlannerHook.h"
@@ -307,6 +308,8 @@ int main(int, char**)
             methodIndex = std::clamp(methodIndex, 0, (int)d.Methods.size() - 1);
             unit        = std::make_unique<HTNPlanningUnit>(database, *planner, d.Methods[methodIndex]);
             unit->SetBacktrackingMode(mode);
+            unit->GetExecutionContext().MissingCallTermPolicy = HTNMissingCallTermPolicy::Report;
+            unit->GetExecutionContext().MissingCallTermCallback = ReportGeneratedDemoMissingCallTerm;
 #ifdef HTN_DEBUG_DECOMPOSITION
             unit->SetGeneratedDebugger(&debugger);
             debugView.ClearSelection();

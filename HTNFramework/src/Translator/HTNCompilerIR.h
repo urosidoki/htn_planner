@@ -117,10 +117,10 @@ struct HTNCompilerIR
         return HTN_IR_NO_INDEX;
     }
 
-    int FindMethodByStringId(uint32 inStringId) const
+    int FindMethodByStringId(uint32 inStringId, uint32 inArgumentCount) const
     {
         for (size_t I = 0; I < Methods.size(); ++I)
-            if (Methods[I].Id == inStringId) return static_cast<int>(I);
+            if (Methods[I].Id == inStringId && Methods[I].ParameterCount == inArgumentCount) return static_cast<int>(I);
         return -1;
     }
 

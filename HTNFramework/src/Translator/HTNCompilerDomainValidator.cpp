@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Jose Antonio Escribano joseantonioescribanoayllon@gmail.com
 
+#include "Core/HTNCallableSignature.h"
 #include "Translator/HTNCompilerDomainValidator.h"
 
 #include "Domain/Diagnostics/HTNDiagnosticSink.h"
@@ -183,7 +184,7 @@ void CollectAxiomCalls(const AST::ConditionPtr& inCondition, std::vector<std::st
 {
     if (!inCondition) return;
     if (inCondition->Kind == AST::ConditionKind::Axiom)
-        outCalls.push_back(Text(inCondition->Id));
+        outCalls.push_back(HTNCallableSignature(Text(inCondition->Id), inCondition->Arguments.size()));
     for (const auto& Child : inCondition->Children)
         CollectAxiomCalls(Child, outCalls);
 }
@@ -194,7 +195,7 @@ bool ValidateAxiomCycles(const AST::Domain& inDomain,
 {
     std::unordered_map<std::string, size_t> IndexById;
     for (size_t I = 0; I < inDomain.Axioms.size(); ++I)
-        IndexById.emplace(inDomain.Axioms[I]->Id, I);
+        IndexById.emplace(HTNCallableSignature(inDomain.Axioms[I]->Id, inDomain.Axioms[I]->Parameters.size()), I);
     std::vector<uint8_t> States(inDomain.Axioms.size(), 0u);
     std::vector<size_t> Stack;
     std::function<bool(size_t)> Visit = [&](size_t Index)
@@ -216,7 +217,7 @@ bool ValidateAxiomCycles(const AST::Domain& inDomain,
                 const auto Begin = std::find(Stack.begin(), Stack.end(), It->second);
                 std::vector<std::string> Cycle;
                 for (auto Item = Begin; Item != Stack.end(); ++Item)
-                    Cycle.push_back(inDomain.Axioms[*Item]->Id);
+                    Cycle.push_back(HTNCallableSignature(inDomain.Axioms[*Item]->Id, inDomain.Axioms[*Item]->Parameters.size()));
                 const auto Smallest = std::min_element(Cycle.begin(), Cycle.end());
                 std::rotate(Cycle.begin(), Smallest, Cycle.end());
                 std::ostringstream Message;
@@ -236,6 +237,16 @@ bool ValidateAxiomCycles(const AST::Domain& inDomain,
     return true;
 }
 
+std::string DeclarationKey(const AST::Method& inMethod)
+{
+    return HTNCallableSignature(inMethod.Id, inMethod.Parameters.size());
+}
+
+std::string DeclarationKey(const AST::Axiom& inAxiom)
+{
+    return HTNCallableSignature(inAxiom.Id, inAxiom.Parameters.size());
+}
+
 template <typename T>
 bool ValidateOverride(const AST::Domain& inModule,
                       const std::shared_ptr<const T>& inDeclaration,
@@ -247,7 +258,8 @@ bool ValidateOverride(const AST::Domain& inModule,
                       const std::vector<std::string>& inFiles,
                       HTNDiagnosticSink& outDiagnostics)
 {
-    const std::string QualifiedId = inModule.Id + "::" + inDeclaration->Id;
+    const std::string Key = DeclarationKey(*inDeclaration);
+    const std::string QualifiedId = inModule.Id + "::" + Key;
     if (inDeclaration->IsBase && !inModule.IsBase)
     {
         Error(outDiagnostics, inFiles, *inDeclaration,
@@ -263,13 +275,13 @@ bool ValidateOverride(const AST::Domain& inModule,
     }
     if (!inDeclaration->OverridesDomain.empty())
     {
-        const std::string BaseQualifiedId = inDeclaration->OverridesDomain + "::" + inDeclaration->Id;
+        const std::string BaseQualifiedId = inDeclaration->OverridesDomain + "::" + Key;
         const auto Base = ioQualified.find(BaseQualifiedId);
         const auto BaseDomain = inBaseDomains.find(inDeclaration->OverridesDomain);
         if (Base == ioQualified.end() || BaseDomain == inBaseDomains.end() ||
             !BaseDomain->second || !ioSpecialization[BaseQualifiedId] ||
             Base->second->Parameters.size() != inDeclaration->Parameters.size() ||
-            ioEffectiveOwner[inDeclaration->Id] != inDeclaration->OverridesDomain)
+            ioEffectiveOwner[Key] != inDeclaration->OverridesDomain)
         {
             Error(outDiagnostics, inFiles, *inDeclaration,
                   "Invalid " + std::string(inKind) + " override '" + QualifiedId +
@@ -280,17 +292,17 @@ bool ValidateOverride(const AST::Domain& inModule,
     }
     else
     {
-        if (ioEffectiveOwner.contains(inDeclaration->Id))
+        if (ioEffectiveOwner.contains(Key))
         {
             Error(outDiagnostics, inFiles, *inDeclaration,
                   std::string(inKind) + " '" + inDeclaration->Id + "' already exists in domain '" +
-                  ioEffectiveOwner[inDeclaration->Id] + "'");
+                  ioEffectiveOwner[Key] + "'");
             return false;
         }
         ioSpecialization[QualifiedId] = inDeclaration->IsBase;
     }
     ioQualified.emplace(QualifiedId, inDeclaration);
-    ioEffectiveOwner[inDeclaration->Id] = inModule.Id;
+    ioEffectiveOwner[Key] = inModule.Id;
     return true;
 }
 
@@ -451,8 +463,8 @@ bool HTNValidateCompilerDomainModules(const std::vector<HTNCompilerAST::Domain>&
     for (const AST::Domain& Module : inModules)
         for (const auto& Method : Module.Methods)
         {
-            Methods[Module.Id + "::" + Method->Id] = Method;
-            Methods[Method->Id] = Method;
+            Methods[HTNCallableSignature(Module.Id + "::" + Method->Id, Method->Parameters.size())] = Method;
+            Methods[HTNCallableSignature(Method->Id, Method->Parameters.size())] = Method;
         }
     for (const AST::Domain& Module : inModules)
         for (const auto& Method : Module.Methods)
@@ -461,22 +473,16 @@ bool HTNValidateCompilerDomainModules(const std::vector<HTNCompilerAST::Domain>&
                 {
                     if (Task->Kind == AST::TaskKind::Primitive) continue;
                     const std::string Id = Text(Task->Id);
-                    const auto It = Methods.find(Id);
+                    const auto It = Methods.find(HTNCallableSignature(Id, Task->Arguments.size()));
                     if (It == Methods.end())
                     {
                         Error(outDiagnostics, inSourceFiles, *Task,
                               std::string(Task->Kind == AST::TaskKind::Deferred ? "Deferred method call '" :
-                                  "Compound method call '") + Id + "' cannot be resolved at link time");
+                                  "Compound method call '") + Id + "' cannot be resolved at link time: no overload accepts " +
+                              std::to_string(Task->Arguments.size()) + " argument(s)");
                         Valid = false;
                     }
-                    else if (It->second->Parameters.size() != Task->Arguments.size())
-                    {
-                        Error(outDiagnostics, inSourceFiles, *Task,
-                              "Call signature mismatch for '" + Id + "': expected " +
-                              std::to_string(It->second->Parameters.size()) + " argument(s), got " +
-                              std::to_string(Task->Arguments.size()));
-                        Valid = false;
-                    }
+
                 }
 
     AST::Domain Linked;
@@ -489,10 +495,32 @@ bool HTNValidateCompilerDomainModules(const std::vector<HTNCompilerAST::Domain>&
         }
     std::unordered_map<std::string, std::shared_ptr<const AST::Axiom>> Effective;
     for (const AST::Domain& Module : inModules)
-        for (const auto& Axiom : Module.Axioms) Effective[Axiom->Id] = Axiom;
+        for (const auto& Axiom : Module.Axioms) Effective[HTNCallableSignature(Axiom->Id, Axiom->Parameters.size())] = Axiom;
     for (const AST::Domain& Module : inModules)
         for (const auto& Axiom : Module.Axioms)
-            if (Effective[Axiom->Id] == Axiom) Linked.Axioms.push_back(Axiom);
+            if (Effective[HTNCallableSignature(Axiom->Id, Axiom->Parameters.size())] == Axiom) Linked.Axioms.push_back(Axiom);
+    std::unordered_set<std::string> AxiomSignatures;
+    for (const auto& Axiom : Linked.Axioms)
+        AxiomSignatures.emplace(HTNCallableSignature(Axiom->Id, Axiom->Parameters.size()));
+    std::function<void(const AST::ConditionPtr&)> ValidateAxiomCall = [&](const AST::ConditionPtr& Condition)
+    {
+        if (!Condition) return;
+        if (Condition->Kind == AST::ConditionKind::Axiom &&
+            !AxiomSignatures.contains(HTNCallableSignature(Text(Condition->Id), Condition->Arguments.size())))
+        {
+            Error(outDiagnostics, inSourceFiles, *Condition,
+                  "Axiom call '" + Text(Condition->Id) + "' cannot be resolved at link time: no overload accepts " +
+                  std::to_string(Condition->Arguments.size()) + " argument(s)");
+            Valid = false;
+        }
+        for (const auto& Child : Condition->Children) ValidateAxiomCall(Child);
+    };
+    for (const auto& Module : inModules)
+    {
+        for (const auto& Method : Module.Methods)
+            for (const auto& Branch : Method->Branches) ValidateAxiomCall(Branch->Precondition);
+        for (const auto& Axiom : Module.Axioms) ValidateAxiomCall(Axiom->Body);
+    }
     Valid = ValidateAxiomCycles(Linked, inSourceFiles, outDiagnostics) && Valid;
     return Valid && !outDiagnostics.HasErrors();
 }

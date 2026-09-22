@@ -105,3 +105,53 @@ TEST(HTNDomainDocumentStoreTest, ChangingIncludedBufferInvalidatesDependentSeman
     ASSERT_TRUE(Store.Read(BasePath, SourceText));
     EXPECT_EQ(SourceText, BaseV2);
 }
+
+TEST(HTNDomainDocumentStoreTest, ResolvesOverloadedMethodDefinitionsByCallArity)
+{
+    const auto Path = std::filesystem::temp_directory_path() / "overload_tooling.domain";
+    const std::string Source =
+        "(:domain Overloads top_level_domain\n"
+        " (:method (work) (b () ((!zero))))\n"
+        " (:method (work ?inp_x) (b () ((!one ?inp_x))))\n"
+        " (:method (run) top_level_method (b () ((work) (work (+ 1 2)) (&work 3) (Overloads::work 4))))\n"
+        ")";
+    HTNDomainDocumentStore Store;
+    Store.OpenDocument(Path, Source, 1);
+    const auto* Model = Store.GetToolingModel(Path);
+    ASSERT_NE(Model, nullptr);
+    EXPECT_TRUE(Model->GetDiagnostics().empty());
+    const char* Calls[] = {"(work)", "(work (+", "(&work", "(Overloads::work"};
+    const int Lines[] = {2, 3, 3, 3};
+    for (size_t I = 0; I < 4; ++I)
+    {
+        const size_t Offset = Source.find(Calls[I], Source.find("(:method (run)")) + 1;
+        HTNCompilerToolingDefinition Definition;
+        ASSERT_TRUE(Model->GetDefinitionAtOffset(Offset, Definition));
+        EXPECT_EQ(Definition.Range.Begin.Line, Lines[I]);
+    }
+}
+
+TEST(HTNDomainDocumentStoreTest, ResolvesAxiomOverloadsInsideMethodsAndAxioms)
+{
+    const auto Path = std::filesystem::temp_directory_path() / "axiom_overload_tooling.domain";
+    const std::string Source =
+        "(:domain Overloads top_level_domain\n"
+        " (:method (run) top_level_method (b (and (#work) (#work 1) (#Overloads::work 2)) ()))\n"
+        " (:axiom (work) (and (#work 1)))\n"
+        " (:axiom (work ?inp_x) ())\n"
+        ")";
+    HTNDomainDocumentStore Store;
+    Store.OpenDocument(Path, Source, 1);
+    const auto* Model = Store.GetToolingModel(Path);
+    ASSERT_NE(Model, nullptr);
+    EXPECT_TRUE(Model->GetDiagnostics().empty());
+    const size_t Offsets[] = {Source.find("#work)"), Source.find("#work 1"),
+                              Source.find("#Overloads::work"), Source.rfind("#work 1")};
+    const int Lines[] = {3, 4, 4, 4};
+    for (size_t I = 0; I < 4; ++I)
+    {
+        HTNCompilerToolingDefinition Definition;
+        ASSERT_TRUE(Model->GetDefinitionAtOffset(Offsets[I], Definition));
+        EXPECT_EQ(Definition.Range.Begin.Line, Lines[I]);
+    }
+}

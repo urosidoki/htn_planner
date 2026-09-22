@@ -35,6 +35,8 @@ void HTNLexerContextBase::AddToken(const HTNAtom& inValue, const HTNTokenType in
         Range.End.Line = Range.Begin.Line;
         Range.End.Column = Range.Begin.Column + 1;
     }
+    if (inType == HTNTokenType::END_OF_FILE)
+        Range.End = Range.Begin;
     mTokens.emplace_back(inValue, inType, Range HTN_LOG_ONLY(, inLexeme));
 }
 

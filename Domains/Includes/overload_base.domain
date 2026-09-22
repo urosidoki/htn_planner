@@ -1,0 +1,4 @@
+(:domain OverloadBase base
+    (:method (select) base (empty () ((!base_zero))))
+    (:method (select ?inp_value) base (one () ((!base_one ?inp_value))))
+)

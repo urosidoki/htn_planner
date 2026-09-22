@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Translator/HTNCompilerAST.h"
+#include "Parser/HTNParserError.h"
 
 #include <cstdint>
 #include <string>
@@ -17,4 +18,5 @@ bool HTNParseCompilerDomainSyntax(const std::string& inSource,
                                   std::string& outError,
                                   HTNSourceRange* outErrorRange = nullptr,
                                   HTNDiagnosticSink* outDiagnostics = nullptr,
-                                  const std::string& inFilePath = {});
+                                  const std::string& inFilePath = {},
+                                  HTNParserError* outParseError = nullptr);

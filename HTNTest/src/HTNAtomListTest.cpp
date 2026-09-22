@@ -39,7 +39,7 @@ struct HTNTypeTraits<HTNTestVector3>
 template<>
 struct HTNTypeConverter<HTNTestVector3>
 {
-    static bool FromAtom(const HTNAtom& inAtom, HTNTestVector3& outValue)
+    static bool FromAtom([[maybe_unused]] void* inClientContext, const HTNAtom& inAtom, HTNTestVector3& outValue)
     {
         if (HTNAtom_GetType(&inAtom) != HTN_ATOM_TYPE_LIST || HTNAtom_GetListSize(&inAtom) != 3)
             return false;
@@ -57,7 +57,7 @@ struct HTNTypeConverter<HTNTestVector3>
         return true;
     }
 
-    static bool ToAtom(const HTNTestVector3& inValue, HTNAtom& outAtom)
+    static bool ToAtom([[maybe_unused]] void* inClientContext, const HTNTestVector3& inValue, HTNAtom& outAtom)
     {
         HTNAtom Values[3];
         HTNAtom_InitRange(Values, 3u);
@@ -91,9 +91,9 @@ struct HTNTypeTraits<HTNTestFailingCustomType>
 template<>
 struct HTNTypeConverter<HTNTestFailingCustomType>
 {
-    static bool FromAtom(const HTNAtom&, HTNTestFailingCustomType&) { return false; }
+    static bool FromAtom([[maybe_unused]] void* inClientContext, const HTNAtom&, HTNTestFailingCustomType&) { return false; }
 
-    static bool ToAtom(const HTNTestFailingCustomType&, HTNAtom& outAtom)
+    static bool ToAtom([[maybe_unused]] void* inClientContext, const HTNTestFailingCustomType&, HTNAtom& outAtom)
     {
         // Deliberately create owned storage before reporting failure. sCreateCall
         // must still destroy this temporary argument and leave no leak behind.

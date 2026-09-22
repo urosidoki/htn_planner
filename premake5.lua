@@ -205,6 +205,7 @@ project "HTNFramework"
 
     files { "%{prj.name}/src/**.cpp",
             "%{prj.name}/src/**.h",
+            "%{prj.name}/src/**.inl",
             "%{prj.name}/**.natvis",
             -- Optick
             "ThirdParty/optick/src/**.cpp",

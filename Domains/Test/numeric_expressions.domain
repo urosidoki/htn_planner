@@ -68,4 +68,195 @@
             )
         )
     )
+
+    (:method (argument_expressions) top_level_method
+        (exercise_all_argument_contexts
+            ()
+            (
+                (compound_arithmetic_arguments
+                    (+ 1 2)
+                    (- 10 4)
+                    (* 2 3)
+                    (/ 12 2)
+                    (% 8 3)
+                    (++ 6)
+                    (-- 8)
+                )
+                (!primitive_arithmetic_arguments
+                    (+ 1 2)
+                    (- 10 4)
+                    (* 2 3)
+                    (/ 12 2)
+                    (% 8 3)
+                    (++ 6)
+                    (-- 8)
+                )
+                (!callterm_arithmetic_arguments
+                    (call add (+ 1 2) (- 10 4))
+                    (call add (* 2 3) (/ 12 2))
+                    (call add (% 8 3) (++ 6))
+                    (call inc (-- 8))
+                )
+                (recursive_method 0 2)
+            )
+        )
+    )
+
+    (:method (compound_arithmetic_arguments
+              ?inp_add ?inp_subtract ?inp_multiply ?inp_divide
+              ?inp_modulo ?inp_increment ?inp_decrement)
+        (emit_compound_arguments
+            ()
+            (
+                (!compound_arithmetic_arguments
+                    ?inp_add ?inp_subtract ?inp_multiply ?inp_divide
+                    ?inp_modulo ?inp_increment ?inp_decrement)
+            )
+        )
+    )
+
+    (:method (recursive_method ?inp_index ?inp_count)
+        (continue_recursion
+            (and
+                (< ?inp_index ?inp_count)
+            )
+            (
+                (recursive_method (++ ?inp_index) ?inp_count)
+            )
+        )
+        (finish_recursion
+            (and
+                (== ?inp_index ?inp_count)
+            )
+            (
+                (!recursive_arithmetic_result ?inp_index)
+            )
+        )
+    )
+
+    (:method (axiom_argument_expressions) top_level_method
+        (exercise_axiom_arguments
+            (and
+                (#accept_arithmetic_arguments
+                    (+ 1 2)
+                    (- 10 4)
+                    (* 2 3)
+                    (/ 12 2)
+                    (% 8 3)
+                    (++ 6)
+                    (-- 8)
+                )
+                (#accept_arithmetic_io (++ 6))
+            )
+            (
+                (!axiom_arithmetic_arguments "success")
+            )
+        )
+    )
+
+    (:method (axiom_output_expression) top_level_method
+        (matching_output
+            (and
+                (#produce_arithmetic_output (++ 6))
+            )
+            (
+                (!axiom_output_expression "success")
+            )
+        )
+    )
+
+    (:method (axiom_output_mismatch) top_level_method
+        (unexpected_match
+            (and
+                (#produce_arithmetic_output (++ 7))
+            )
+            (
+                (!axiom_output_mismatch "unexpected_success")
+            )
+        )
+        (expected_failure
+            ()
+            (
+                (!axiom_output_mismatch "controlled_failure")
+            )
+        )
+    )
+
+    (:method (axiom_io_mismatch) top_level_method
+        (unexpected_match
+            (and
+                (#accept_arithmetic_io (++ 7))
+            )
+            (
+                (!axiom_io_mismatch "unexpected_success")
+            )
+        )
+        (expected_failure
+            ()
+            (
+                (!axiom_io_mismatch "controlled_failure")
+            )
+        )
+    )
+
+    (:method (axiom_invalid_input_expression) top_level_method
+        (unexpected_match
+            (and
+                (#accept_arithmetic_arguments
+                    (/ 1 0) 6 6 6 2 7 7)
+            )
+            (
+                (!axiom_invalid_input_expression "unexpected_success")
+            )
+        )
+        (expected_failure
+            ()
+            (
+                (!axiom_invalid_input_expression "controlled_failure")
+            )
+        )
+    )
+
+    (:method (axiom_invalid_output_expression) top_level_method
+        (unexpected_match
+            (and
+                (#produce_arithmetic_output (/ 1 0))
+            )
+            (
+                (!axiom_invalid_output_expression "unexpected_success")
+            )
+        )
+        (expected_failure
+            ()
+            (
+                (!axiom_invalid_output_expression "controlled_failure")
+            )
+        )
+    )
+
+    (:axiom (accept_arithmetic_arguments
+             ?inp_add ?inp_subtract ?inp_multiply ?inp_divide
+             ?inp_modulo ?inp_increment ?inp_decrement)
+        (and
+            (== ?inp_add 3)
+            (== ?inp_subtract 6)
+            (== ?inp_multiply 6)
+            (== ?inp_divide 6)
+            (== ?inp_modulo 2)
+            (== ?inp_increment 7)
+            (== ?inp_decrement 7)
+        )
+    )
+
+    (:axiom (accept_arithmetic_io ?io_value)
+        (and
+            (== ?io_value 7)
+        )
+    )
+
+    (:axiom (produce_arithmetic_output ?out_value)
+        (and
+            (generated_number ?out_value)
+        )
+    )
 )

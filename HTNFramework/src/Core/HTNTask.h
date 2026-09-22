@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Core/HTNAtom.h"
+#include "Core/HTNDomainSyntax.h"
 #include "Core/HtnSymbol.h"
 #include "HTNCoreMinimal.h"
 
@@ -12,10 +13,7 @@
 // A runtime HTN call has one representation everywhere: a list whose first
 // element is the call head symbol and whose remaining elements are arguments:
 // (head arg0 ... argN). Plan steps reuse that same representation. Their head
-// prefix carries the plan-step semantics: !primitive and #deferred-call.
-inline constexpr char HTNPrimitiveTaskPrefix = '!';
-inline constexpr char HTNDeferredCallPrefix = '#';
-
+// prefix carries the plan-step semantics: !primitive and &deferred-call.
 enum class HTNPlanStepKind : uint8
 {
     Invalid = 0,

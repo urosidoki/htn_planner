@@ -41,6 +41,7 @@ int main()
         return Finish(3);
 
     HTNGeneratedPlannerContext Context{};
+    Context.missing_callterm_policy = HTNMissingCallTermPolicy::FailSilently;
     Context.world_state = &WorldState;
     Context.callterm_binding_context = &BindingContext;
     Context.backtracking_mode = HTN_BACKTRACKING_ALL;

@@ -19,7 +19,8 @@ const HTNToken* HTNParserBase::ParseToken(const HTNTokenType inTokenType, HTNPar
     {
         const size        TokensSize       = ioParserContext.GetTokensSize();
         const std::string LastErrorMessage = std::format("Token at [{}] is out of bounds [{}]", Position, TokensSize);
-        ioParserContext.SetLastError(LastErrorMessage, -1, -1);
+        ioParserContext.SetParseError(HTNParserErrorCode::TokenOutOfBounds,
+                                      LastErrorMessage, -1, -1);
         return nullptr;
     }
 
@@ -36,7 +37,8 @@ const HTNToken* HTNParserBase::ParseToken(const HTNTokenType inTokenType, HTNPar
                         HTNTokenHelpers::GetTokenTypeString(inTokenType));
 #endif
         const HTNSourceRange& SourceRange = Token->GetSourceRange();
-        ioParserContext.SetLastError(
+        ioParserContext.SetParseError(
+            HTNParserErrorCode::UnexpectedToken,
             LastErrorMessage,
             static_cast<int32>(std::max(0, SourceRange.Begin.Line - 1)),
             static_cast<int32>(std::max(0, SourceRange.Begin.Column - 1)));

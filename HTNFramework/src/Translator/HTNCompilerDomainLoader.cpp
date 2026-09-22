@@ -1,10 +1,12 @@
 // Copyright (c) 2026 Jose Antonio Escribano joseantonioescribanoayllon@gmail.com
 
+#include "Core/HTNCallableSignature.h"
 #include "Translator/HTNCompilerDomainLoader.h"
 #include "Translator/HTNCompilerDomainSyntaxParser.h"
 #include "Translator/HTNCompilerDomainValidator.h"
 
 #include "Core/HTNFileReader.h"
+#include "Domain/Source/HTNDomainFileSyntax.h"
 #include "Domain/Diagnostics/HTNDiagnosticSink.h"
 
 #include <algorithm>
@@ -17,58 +19,7 @@
 
 namespace
 {
-std::string Trim(const std::string& inText)
-{
-    const size_t Begin = inText.find_first_not_of(" \t\r\n");
-    if (Begin == std::string::npos) return {};
-    const size_t End = inText.find_last_not_of(" \t\r\n");
-    return inText.substr(Begin, End - Begin + 1);
-}
 
-bool SplitFile(const std::string& inText, std::vector<std::string>& outIncludes, std::string& outDomainText, std::string& outError)
-{
-    size_t Cursor = 0;
-    // File-level grammar is deliberately strict: zero or more (:include "...") forms,
-    // followed by exactly the normal (:domain ...) form. Whitespace/comments may precede forms.
-    while (Cursor < inText.size())
-    {
-        while (Cursor < inText.size() && std::isspace(static_cast<unsigned char>(inText[Cursor]))) ++Cursor;
-        if (Cursor + 1 < inText.size() && inText[Cursor] == '/' && inText[Cursor + 1] == '/')
-        {
-            const size_t Eol = inText.find('\n', Cursor);
-            Cursor = Eol == std::string::npos ? inText.size() : Eol + 1;
-            continue;
-        }
-        if (inText.compare(Cursor, 9, "(:include") != 0) break;
-        size_t P = Cursor + 9;
-        while (P < inText.size() && std::isspace(static_cast<unsigned char>(inText[P]))) ++P;
-        if (P >= inText.size() || inText[P] != '"') { outError = "Expected quoted path after :include"; return false; }
-        const size_t QuoteEnd = inText.find('"', P + 1);
-        if (QuoteEnd == std::string::npos) { outError = "Unterminated :include path"; return false; }
-        outIncludes.emplace_back(inText.substr(P + 1, QuoteEnd - P - 1));
-        P = QuoteEnd + 1;
-        while (P < inText.size() && std::isspace(static_cast<unsigned char>(inText[P]))) ++P;
-        if (P >= inText.size() || inText[P] != ')') { outError = "Expected ')' after :include path"; return false; }
-        Cursor = P + 1;
-    }
-    // Preserve original source coordinates for diagnostics. Characters belonging to
-    // file-level include forms are replaced with spaces while line breaks are retained,
-    // so parser token line/column positions still refer to the original file.
-    outDomainText = inText;
-    for (size_t Index = 0; Index < Cursor; ++Index)
-    {
-        if (outDomainText[Index] != '\n' && outDomainText[Index] != '\r')
-            outDomainText[Index] = ' ';
-    }
-    if (Trim(outDomainText).empty()) { outError = "Missing :domain form"; return false; }
-    // Includes inside/after the domain are intentionally illegal.
-    if (outDomainText.find("(:include", Cursor) != std::string::npos)
-    {
-        outError = ":include directives are only allowed before :domain";
-        return false;
-    }
-    return true;
-}
 
 
 std::string CanonicalKey(const std::filesystem::path& inPath)
@@ -103,7 +54,9 @@ public:
     bool Visit(const std::filesystem::path& inPath,
                bool inIsRoot,
                CompilerSourceCollection& outSources,
-               std::string& outError)
+               std::string& outError,
+               const std::string& inIncludingFile = {},
+               const HTNSourceRange& inIncludeRange = {})
     {
         const std::string Key = CanonicalKey(inPath);
         if (mVisited.contains(Key)) return true;
@@ -115,7 +68,8 @@ public:
             for (auto It = StackIt; It != mStack.end(); ++It) Chain << *It << " -> ";
             Chain << Key;
             outError = Chain.str();
-            mDiagnostics.Error(inPath.generic_string(), outError, HTNDiagnosticRecovery::Fatal);
+            mDiagnostics.Error(inIncludingFile.empty() ? inPath.generic_string() : inIncludingFile,
+                               outError, HTNDiagnosticRecovery::Fatal, inIncludeRange);
             return false;
         }
 
@@ -128,17 +82,18 @@ public:
             if (!Reader.ReadFile(Text))
             {
                 outError = "Could not read included domain '" + inPath.string() + "'";
-                mDiagnostics.Error(inPath.generic_string(), outError, HTNDiagnosticRecovery::Fatal);
+                mDiagnostics.Error(inIncludingFile.empty() ? inPath.generic_string() : inIncludingFile,
+                               outError, HTNDiagnosticRecovery::Fatal, inIncludeRange);
                 return false;
             }
         }
-        Text.erase(std::remove(Text.begin(), Text.end(), '\r'), Text.end());
-        std::vector<std::string> Includes;
+        std::vector<HTNDomainInclude> Includes;
         std::string DomainText;
-        if (!SplitFile(Text, Includes, DomainText, outError))
+        HTNParserError FileError;
+        if (!HTNSplitDomainFile(Text, Includes, DomainText, FileError))
         {
-            outError = inPath.string() + ": " + outError;
-            mDiagnostics.Error(inPath.generic_string(), outError, HTNDiagnosticRecovery::Fatal);
+            outError = FileError.Message;
+            mDiagnostics.Error(inPath.generic_string(), outError, HTNDiagnosticRecovery::Fatal, FileError.Range);
             return false;
         }
 
@@ -160,11 +115,11 @@ public:
         }
 
         mStack.push_back(Key);
-        for (const std::string& Include : Includes)
+        for (const HTNDomainInclude& Include : Includes)
         {
-            std::filesystem::path Child(Include);
+            std::filesystem::path Child(Include.Path);
             if (Child.is_relative()) Child = inPath.parent_path() / Child;
-            if (!Visit(Child, false, outSources, outError)) return false;
+            if (!Visit(Child, false, outSources, outError, inPath.generic_string(), Include.Range)) return false;
         }
         mStack.pop_back();
 
@@ -238,9 +193,9 @@ bool BuildCompilerDomain(const CompilerSourceCollection& inLinked,
             for (const auto& Constant : Group->Constants)
                 EffectiveConstants[Constant->Id] = Constant;
         for (const auto& Axiom : Module.Axioms)
-            EffectiveAxioms[Axiom->Id] = Axiom;
+            EffectiveAxioms[HTNCallableSignature(Axiom->Id, Axiom->Parameters.size())] = Axiom;
         for (const auto& Method : Module.Methods)
-            EffectiveMethods[Method->Id] = Method;
+            EffectiveMethods[HTNCallableSignature(Method->Id, Method->Parameters.size())] = Method;
     }
 
     outResult.Domain.Id = Modules.back().Id;
@@ -272,11 +227,11 @@ bool BuildCompilerDomain(const CompilerSourceCollection& inLinked,
     }
     for (const AST::Domain& Module : Modules)
         for (const auto& Axiom : Module.Axioms)
-            if (EffectiveAxioms[Axiom->Id] == Axiom)
+            if (EffectiveAxioms[HTNCallableSignature(Axiom->Id, Axiom->Parameters.size())] == Axiom)
                 outResult.Domain.Axioms.push_back(Axiom);
     for (const AST::Domain& Module : Modules)
         for (const auto& Method : Module.Methods)
-            if (EffectiveMethods[Method->Id] == Method)
+            if (EffectiveMethods[HTNCallableSignature(Method->Id, Method->Parameters.size())] == Method)
                 outResult.Domain.Methods.push_back(Method);
 
     outResult.LinkedSourceText = inLinked.LinkedSourceText;

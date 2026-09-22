@@ -14,6 +14,7 @@ std::string GetTokenTypeString(const HTNTokenType inTokenType)
                                                                                       {HTNTokenType::EXCLAMATION_MARK, "exclamation mark"},
                                                                                       {HTNTokenType::QUESTION_MARK, "question mark"},
                                                                                       {HTNTokenType::HASH, "hash"},
+                                                                                      {HTNTokenType::AMPERSAND, "ampersand"},
                                                                                       {HTNTokenType::AT, "at"},
                                                                                       {HTNTokenType::EQUAL_EQUAL, "=="},
                                                                                       {HTNTokenType::NOT_EQUAL, "!="},

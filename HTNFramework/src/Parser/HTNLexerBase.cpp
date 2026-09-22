@@ -6,9 +6,7 @@
 #include "Parser/HTNLexerContextBase.h"
 #include "Parser/HTNTokenType.h"
 
-#ifdef HTN_ENABLE_LOGGING
-#include <limits>
-#endif
+#include <charconv>
 
 HTNLexerBase::~HTNLexerBase() = default;
 
@@ -45,55 +43,38 @@ void HTNLexerBase::LexIdentifier(const std::unordered_map<std::string, HTNTokenT
     }
 }
 
-void HTNLexerBase::LexNumber(HTNLexerContextBase& ioLexerContext) const
+bool HTNLexerBase::LexNumber(HTNLexerContextBase& ioLexerContext) const
 {
     OPTICK_EVENT("LexNumber");
-
-    const uint32 StartPosition = ioLexerContext.GetPosition();
-
-#ifdef HTN_ENABLE_LOGGING
-    const uint32 StartRow    = ioLexerContext.GetRow();
-    const uint32 StartColumn = ioLexerContext.GetColumn();
-#endif
-
+    const uint32 Start = ioLexerContext.GetPosition();
+    HTNSourceRange Range;
+    Range.Begin = {Start, static_cast<int>(ioLexerContext.GetRow() + 1), static_cast<int>(ioLexerContext.GetColumn() + 1)};
     ioLexerContext.AdvancePosition();
-
-    // Check for more digits
-    for (char Character = ioLexerContext.GetCharacter(); HTNLexerHelpers::IsDigit(Character); Character = ioLexerContext.GetCharacter())
+    while (HTNLexerHelpers::IsDigit(ioLexerContext.GetCharacter()))
+        ioLexerContext.AdvancePosition();
+    const bool IsFloat = ioLexerContext.GetCharacter() == '.' && HTNLexerHelpers::IsDigit(ioLexerContext.GetCharacter(1));
+    if (IsFloat)
     {
         ioLexerContext.AdvancePosition();
-    }
-
-    const uint32       CurrentPosition = ioLexerContext.GetPosition();
-    const std::string& Text            = ioLexerContext.GetText();
-
-    // Check for fractional part
-    static constexpr uint32 LookAhead     = 1;
-    const char              NextCharacter = ioLexerContext.GetCharacter(LookAhead);
-    if (ioLexerContext.GetCharacter() == '.' && HTNLexerHelpers::IsDigit(NextCharacter))
-    {
-        ioLexerContext.AdvancePosition();
-
-        // Check for more digits in fractional part
-        for (char Character = ioLexerContext.GetCharacter(); HTNLexerHelpers::IsDigit(Character); Character = ioLexerContext.GetCharacter())
-        {
+        while (HTNLexerHelpers::IsDigit(ioLexerContext.GetCharacter()))
             ioLexerContext.AdvancePosition();
-        }
-
-        const uint32      EndPosition = ioLexerContext.GetPosition() - StartPosition;
-        const std::string Lexeme      = Text.substr(StartPosition, EndPosition);
-        const float       Number      = std::stof(Lexeme);
-        HTN_DOMAIN_CLOG_ERROR(std::stod(Lexeme) < std::numeric_limits<float>::min() || std::stod(Lexeme) > std::numeric_limits<float>::max(),
-                              StartRow, StartColumn, "Number out of bounds");
-        ioLexerContext.AddToken(HTNAtomOwner(Number), HTNTokenType::NUMBER HTN_LOG_ONLY(, Lexeme));
     }
-    else
+    const std::string Lexeme = ioLexerContext.GetText().substr(Start, ioLexerContext.GetPosition() - Start);
+    const char* Begin = Lexeme.data();
+    const char* End = Begin + Lexeme.size();
+    int32 Integer = 0;
+    float Floating = 0.0f;
+    const auto Conversion = IsFloat ? std::from_chars(Begin, End, Floating) : std::from_chars(Begin, End, Integer);
+    if (Conversion.ec != std::errc{} || Conversion.ptr != End)
     {
-        const uint32      EndPosition = CurrentPosition - StartPosition;
-        const std::string Lexeme      = Text.substr(StartPosition, EndPosition);
-        const int32       Number      = std::stoi(Lexeme);
-        ioLexerContext.AddToken(HTNAtomOwner(Number), HTNTokenType::NUMBER HTN_LOG_ONLY(, Lexeme));
+        Range.End = {ioLexerContext.GetPosition(), static_cast<int>(ioLexerContext.GetRow() + 1),
+                     static_cast<int>(ioLexerContext.GetColumn() + 1)};
+        ioLexerContext.SetLastError("Number out of bounds", Range);
+        return false;
     }
+    ioLexerContext.AddToken(IsFloat ? HTNAtomOwner(Floating) : HTNAtomOwner(Integer),
+                            HTNTokenType::NUMBER HTN_LOG_ONLY(, Lexeme));
+    return true;
 }
 
 bool HTNLexerBase::LexString(HTNLexerContextBase& ioLexerContext) const
@@ -104,9 +85,9 @@ bool HTNLexerBase::LexString(HTNLexerContextBase& ioLexerContext) const
 
     ioLexerContext.AdvancePosition();
 
-    for (char Character = ioLexerContext.GetCharacter(); Character != '"'; Character = ioLexerContext.GetCharacter())
+    for (char Character = ioLexerContext.GetCharacter(); Character != '"' && ioLexerContext.GetPosition() < ioLexerContext.GetText().size(); Character = ioLexerContext.GetCharacter())
     {
-        ioLexerContext.AdvancePosition();
+        ioLexerContext.AdvancePosition(Character == '\n');
     }
 
     if (ioLexerContext.GetCharacter() != '"')
@@ -119,8 +100,6 @@ bool HTNLexerBase::LexString(HTNLexerContextBase& ioLexerContext) const
         Range.Begin.Line = static_cast<int>(Row + 1);
         Range.Begin.Column = static_cast<int>(Column + 1);
         Range.End = Range.Begin;
-        ++Range.End.Column;
-        ++Range.End.Offset;
         ioLexerContext.SetLastError(Message, Range);
         HTN_DOMAIN_LOG_ERROR(Row, Column, "{}", Message);
         return false;
@@ -142,10 +121,11 @@ void HTNLexerBase::LexComment(HTNLexerContextBase& ioLexerContext) const
 {
     OPTICK_EVENT("LexComment");
 
-    for (char Character = ioLexerContext.GetCharacter(); Character != '\n'; Character = ioLexerContext.GetCharacter())
+    for (char Character = ioLexerContext.GetCharacter(); Character != '\n' && ioLexerContext.GetPosition() < ioLexerContext.GetText().size(); Character = ioLexerContext.GetCharacter())
     {
         ioLexerContext.AdvancePosition();
     }
 
-    ioLexerContext.AdvancePosition(true);
+    if (ioLexerContext.GetCharacter() == '\n')
+        ioLexerContext.AdvancePosition(true);
 }

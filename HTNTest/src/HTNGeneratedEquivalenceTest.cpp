@@ -451,6 +451,7 @@ HTNDecompositionStatus RunGeneratedPlannerWithStorage(const HTNGeneratedPlannerD
     HTNGeneratedPlannerContext Context{};
     Context.world_state = &ioWorldState;
     Context.callterm_binding_context = &inCallTermBindingContext;
+    Context.missing_callterm_policy = HTNMissingCallTermPolicy::FailSilently;
     Context.backtracking_mode = HTN_BACKTRACKING_ALL;
     Context.execution_storage = inExecutionStorage;
     Context.prepared_storage = inPreparedStorage;
@@ -1104,7 +1105,7 @@ TEST(HTNGeneratedCodeArchitectureTest, GeneratedCallTermsUsePreparedRegistryEntr
             << Entry.path().filename().string() << " does not store prepared registry entries";
 
         size_t Invocation = 0u;
-        while ((Invocation = Text.find("HTNCallTermRegistry_InvokeGeneratedCallTerm(", Invocation)) != std::string::npos)
+        while ((Invocation = Text.find("HTNCallTermRegistry_InvokeGeneratedCallTermWithSource(", Invocation)) != std::string::npos)
         {
             const size_t LineEnd = Text.find('\n', Invocation);
             const std::string_view Line(Text.data() + Invocation,
@@ -1358,10 +1359,13 @@ TEST(HTNGeneratedCallTermTest, PreparedSlotKeepsDirectRegistryEntryAcrossRegistr
         HTNCallTermRegistry_ResolveGeneratedCallTerm(&BindingContext, "direct_entry");
     EXPECT_EQ(Slot.registry_entry, ResolvedAgain.registry_entry);
 
+    HTNGeneratedPlannerContext Execution{};
+    Execution.callterm_binding_context = &BindingContext;
+    Execution.missing_callterm_policy = HTNMissingCallTermPolicy::FailSilently;
     HTNAtom Result;
     HTNAtom_Init(&Result);
     EXPECT_TRUE(HTNCallTermRegistry_InvokeGeneratedCallTerm(
-        &BindingContext,
+        &Execution,
         &Slot,
         nullptr,
         0u,
@@ -1394,15 +1398,21 @@ TEST(HTNGeneratedCallTermTest, SharedMemberBindingUsesTheDaemonFromEachPlannerHo
         &SecondHook.GetCallTermBindingContext(), "read_entity_value");
     ASSERT_EQ(FirstSlot.registry_entry, SecondSlot.registry_entry);
 
+    HTNPlannerExecutionContext FirstExecution{}, SecondExecution{};
+    FirstExecution.CallTermBindingContext = &FirstHook.GetCallTermBindingContext();
+    SecondExecution.CallTermBindingContext = &SecondHook.GetCallTermBindingContext();
+    HTNGeneratedPlannerContext FirstGenerated{}, SecondGenerated{};
+    FirstGenerated.callterm_binding_context = FirstExecution.CallTermBindingContext;
+    SecondGenerated.callterm_binding_context = SecondExecution.CallTermBindingContext;
     const std::vector<HTNAtomOwner> NoArguments;
     const HTNCallTermArguments RegistryArguments(NoArguments);
     const HTNAtomOwner FirstRegistryResult = Registry.Execute(
         "read_entity_value",
-        FirstHook.GetCallTermBindingContext(),
+        FirstExecution,
         RegistryArguments);
     const HTNAtomOwner SecondRegistryResult = Registry.Execute(
         "read_entity_value",
-        SecondHook.GetCallTermBindingContext(),
+        SecondExecution,
         RegistryArguments);
     ASSERT_TRUE(FirstRegistryResult.IsType<int32>());
     ASSERT_TRUE(SecondRegistryResult.IsType<int32>());
@@ -1414,9 +1424,9 @@ TEST(HTNGeneratedCallTermTest, SharedMemberBindingUsesTheDaemonFromEachPlannerHo
     HTNAtom_Init(&FirstResult);
     HTNAtom_Init(&SecondResult);
     ASSERT_TRUE(HTNCallTermRegistry_InvokeGeneratedCallTerm(
-        &FirstHook.GetCallTermBindingContext(), &FirstSlot, nullptr, 0u, &FirstResult));
+        &FirstGenerated, &FirstSlot, nullptr, 0u, &FirstResult));
     ASSERT_TRUE(HTNCallTermRegistry_InvokeGeneratedCallTerm(
-        &SecondHook.GetCallTermBindingContext(), &SecondSlot, nullptr, 0u, &SecondResult));
+        &SecondGenerated, &SecondSlot, nullptr, 0u, &SecondResult));
     EXPECT_EQ(FirstResult.type, HTN_ATOM_TYPE_INT);
     EXPECT_EQ(SecondResult.type, HTN_ATOM_TYPE_INT);
     EXPECT_EQ(FirstResult.value.int_value, 17);
@@ -1443,6 +1453,9 @@ TEST(HTNGeneratedCallTermTest, MissingDaemonFailsOnInvocationAndCanRecover)
         Registry, "read_entity_value", PerEntityCallTermDaemon, ReadValue));
     HTNWorldState WorldState;
     HTNPlannerHook PlannerHook(WorldState, Registry);
+    HTNGeneratedPlannerContext Execution{};
+    Execution.callterm_binding_context = &PlannerHook.GetCallTermBindingContext();
+    Execution.missing_callterm_policy = HTNMissingCallTermPolicy::FailSilently;
 
     const HTNGeneratedCallTerm Slot = HTNCallTermRegistry_ResolveGeneratedCallTerm(
         &PlannerHook.GetCallTermBindingContext(), "read_entity_value");
@@ -1451,14 +1464,14 @@ TEST(HTNGeneratedCallTermTest, MissingDaemonFailsOnInvocationAndCanRecover)
     HTNAtom Result;
     HTNAtom_Init(&Result);
     EXPECT_FALSE(HTNCallTermRegistry_InvokeGeneratedCallTerm(
-        &PlannerHook.GetCallTermBindingContext(), &Slot, nullptr, 0u, &Result));
+        &Execution, &Slot, nullptr, 0u, &Result));
     EXPECT_EQ(Result.type, HTN_ATOM_TYPE_UNBOUND);
 
     PerEntityCallTermDaemon Daemon{73};
     ASSERT_TRUE(HTN_CALLTERM_SET_DAEMON(
         PlannerHook.GetCallTermBindingContext(), PerEntityCallTermDaemon, &Daemon));
     ASSERT_TRUE(HTNCallTermRegistry_InvokeGeneratedCallTerm(
-        &PlannerHook.GetCallTermBindingContext(), &Slot, nullptr, 0u, &Result));
+        &Execution, &Slot, nullptr, 0u, &Result));
     EXPECT_EQ(Result.type, HTN_ATOM_TYPE_INT);
     EXPECT_EQ(Result.value.int_value, 73);
     HTNAtom_Destroy(&Result);
@@ -1790,6 +1803,107 @@ INSTANTIATE_TEST_CASE_P(
     testing::Values(
         HTNEquivalenceCase{"NestedCalls", "callterms", "nested_calls", "NestedCallsDemo", "test_nested_calls"}),
     EquivalenceCaseName);
+
+TEST(HTNGeneratedArithmeticArgumentTest, EvaluatesEveryOperatorInTaskAndCallTermArguments)
+{
+    HTNAtomLifetimeBalanceScope AtomLifetimeBalance;
+    HTNDatabaseHook Database;
+    ASSERT_TRUE(Database.ParseWorldStateFile(MakeTestFilePath(
+        HTNFileHelpers::kWorldStatesDirectoryName,
+        "numeric_expressions",
+        HTNFileHelpers::kWorldStateFileExtension)));
+
+    HTNCallTermRegistry CallTermRegistry;
+    BindTestCallTerms(CallTermRegistry);
+    HTNPlannerHook PlannerHook(Database.GetWorldState(), CallTermRegistry);
+
+    const HTNGeneratedPlannerDefinition* Definition = FindGeneratedDomain("NumericExpressionsDemo");
+    ASSERT_NE(Definition, nullptr);
+
+    HTNAtomOwner Output;
+    ASSERT_EQ(
+        HTN_DECOMPOSITION_SUCCEEDED,
+        RunGeneratedPlanner(
+            *Definition,
+            Database.GetWorldState(),
+            PlannerHook.GetCallTermBindingContext(),
+            "argument_expressions",
+            Output));
+
+    const std::vector<std::string> ExpectedPlan = {
+        "!compound_arithmetic_arguments 3 6 6 6 2 7 7",
+        "!primitive_arithmetic_arguments 3 6 6 6 2 7 7",
+        "!callterm_arithmetic_arguments 9 12 9 8",
+        "!recursive_arithmetic_result 2"};
+    EXPECT_EQ(ExpectedPlan, FormatPlan(Output));
+}
+
+TEST(HTNGeneratedArithmeticArgumentTest, EvaluatesEveryOperatorInAxiomArguments)
+{
+    HTNAtomLifetimeBalanceScope AtomLifetimeBalance;
+    HTNDatabaseHook Database;
+    ASSERT_TRUE(Database.ParseWorldStateFile(MakeTestFilePath(
+        HTNFileHelpers::kWorldStatesDirectoryName,
+        "numeric_expressions",
+        HTNFileHelpers::kWorldStateFileExtension)));
+
+    HTNCallTermRegistry CallTermRegistry;
+    BindTestCallTerms(CallTermRegistry);
+    HTNPlannerHook PlannerHook(Database.GetWorldState(), CallTermRegistry);
+
+    const HTNGeneratedPlannerDefinition* Definition = FindGeneratedDomain("NumericExpressionsDemo");
+    ASSERT_NE(Definition, nullptr);
+
+    HTNAtomOwner Output;
+    ASSERT_EQ(
+        HTN_DECOMPOSITION_SUCCEEDED,
+        RunGeneratedPlanner(
+            *Definition,
+            Database.GetWorldState(),
+            PlannerHook.GetCallTermBindingContext(),
+            "axiom_argument_expressions",
+            Output));
+
+    const std::vector<std::string> ExpectedPlan = {
+        "!axiom_arithmetic_arguments \"success\""};
+    EXPECT_EQ(ExpectedPlan, FormatPlan(Output));
+}
+
+TEST(HTNGeneratedArithmeticArgumentTest, HandlesAxiomOutputIoMismatchAndInvalidArithmetic)
+{
+    HTNAtomLifetimeBalanceScope AtomLifetimeBalance;
+    HTNDatabaseHook Database;
+    ASSERT_TRUE(Database.ParseWorldStateFile(MakeTestFilePath(
+        HTNFileHelpers::kWorldStatesDirectoryName,
+        "numeric_expressions",
+        HTNFileHelpers::kWorldStateFileExtension)));
+
+    HTNCallTermRegistry CallTermRegistry;
+    BindTestCallTerms(CallTermRegistry);
+    HTNPlannerHook PlannerHook(Database.GetWorldState(), CallTermRegistry);
+    const HTNGeneratedPlannerDefinition* Definition = FindGeneratedDomain("NumericExpressionsDemo");
+    ASSERT_NE(Definition, nullptr);
+
+    const auto ExpectPlan = [&](const char* inEntryPoint, const std::string& inExpectedStep)
+    {
+        HTNAtomOwner Output;
+        ASSERT_EQ(
+            HTN_DECOMPOSITION_SUCCEEDED,
+            RunGeneratedPlanner(
+                *Definition,
+                Database.GetWorldState(),
+                PlannerHook.GetCallTermBindingContext(),
+                inEntryPoint,
+                Output));
+        EXPECT_EQ(std::vector<std::string>{inExpectedStep}, FormatPlan(Output));
+    };
+
+    ExpectPlan("axiom_output_expression", "!axiom_output_expression \"success\"");
+    ExpectPlan("axiom_output_mismatch", "!axiom_output_mismatch \"controlled_failure\"");
+    ExpectPlan("axiom_io_mismatch", "!axiom_io_mismatch \"controlled_failure\"");
+    ExpectPlan("axiom_invalid_input_expression", "!axiom_invalid_input_expression \"controlled_failure\"");
+    ExpectPlan("axiom_invalid_output_expression", "!axiom_invalid_output_expression \"controlled_failure\"");
+}
 
 INSTANTIATE_TEST_CASE_P(
     NumericExpressions,
@@ -2576,3 +2690,223 @@ TEST(HTNGeneratedDebuggerTest, BacktrackedConditionsKeepGeneratedMetadataPaths)
 }
 
 #endif
+
+extern "C" const HTNGeneratedPlannerDefinition* CreateMethodOverloadsHTN_GetDefinition(void);
+
+TEST(HTNMethodOverloadTest, ExecutesLocalIncludedQualifiedRecursiveAndEntryOverloads)
+{
+    HTNDatabaseHook Database;
+    HTNPlannerHook GeneratedHook(Database.GetWorldState());
+    ASSERT_TRUE(GeneratedHook.SetGeneratedPlannerDefinition(CreateMethodOverloadsHTN_GetDefinition()));
+    HTNPlanningUnit Generated(Database, GeneratedHook, "run");
+    ASSERT_EQ(Generated.DecomposeTopLevelMethod(), HTN_DECOMPOSITION_SUCCEEDED);
+    const std::vector<std::string> Expected = {
+        "!base_zero", "!override_one 7", "!local_two 8 9", "!base_zero", "!base_one 10", "!walk_done 2"};
+    EXPECT_EQ(FormatPlan(Generated.GetLastDecomposition().GetResult()), Expected);
+    const auto* Run = HtnSymbol::sGetSymbol("run");
+    ASSERT_EQ(Generated.DecomposeTopLevelMethod(Run, 42), HTN_DECOMPOSITION_SUCCEEDED);
+    EXPECT_EQ(FormatPlan(Generated.GetLastDecomposition().GetResult()),
+              (std::vector<std::string>{"!override_one 42"}));
+    EXPECT_EQ(Generated.DecomposeTopLevelMethod(Run, 1, 2), HTN_DECOMPOSITION_INVALID_CALL);
+    ASSERT_EQ(Generated.DecomposeTopLevelMethod(), HTN_DECOMPOSITION_SUCCEEDED);
+    const auto* Mixed = HtnSymbol::sGetSymbol("mixed");
+    EXPECT_EQ(Generated.DecomposeTopLevelMethod(Mixed), HTN_DECOMPOSITION_INVALID_CALL);
+    ASSERT_EQ(Generated.DecomposeTopLevelMethod(Mixed, 9), HTN_DECOMPOSITION_SUCCEEDED);
+    EXPECT_EQ(FormatPlan(Generated.GetLastDecomposition().GetResult()), (std::vector<std::string>{"!public_one 9"}));
+}
+
+TEST(HTNMethodOverloadTest, ResolvesDeferredOverloadsByArgumentCount)
+{
+    HTNDatabaseHook Database;
+    HTNPlannerHook Hook(Database.GetWorldState());
+    ASSERT_TRUE(Hook.SetGeneratedPlannerDefinition(CreateMethodOverloadsHTN_GetDefinition()));
+    HTNPlanningUnit Unit(Database, Hook, "deferred");
+    ASSERT_EQ(Unit.DecomposeTopLevelMethod(), HTN_DECOMPOSITION_SUCCEEDED);
+    Unit.ResolveCurrentPrimitiveTask();
+    ASSERT_NE(Unit.GetCurrentPrimitiveTask(), nullptr);
+    EXPECT_EQ(HTNGetTaskHead(*Unit.GetCurrentPrimitiveTask())->GetString(), "!later_zero");
+    ASSERT_EQ(Unit.DecomposeTopLevelMethod(HtnSymbol::sGetSymbol("deferred"), 23), HTN_DECOMPOSITION_SUCCEEDED);
+    Unit.ResolveCurrentPrimitiveTask();
+    ASSERT_NE(Unit.GetCurrentPrimitiveTask(), nullptr);
+    EXPECT_EQ(HTNGetTaskHead(*Unit.GetCurrentPrimitiveTask())->GetString(), "!later_one");
+    EXPECT_EQ(HTNAtomGetValue<int32>(HTNGetTaskArgument(*Unit.GetCurrentPrimitiveTask(), 0u)), 23);
+}
+
+extern "C" const HTNGeneratedPlannerDefinition* CreateAxiomOverloadsHTN_GetDefinition(void);
+
+TEST(HTNAxiomOverloadTest, PreservesInputOutputIoAndBacktrackingAcrossOverloads)
+{
+    HTNAtomLifetimeBalanceScope AtomLifetimeBalance;
+    HTNDatabaseHook Database;
+    ASSERT_TRUE(Database.ParseWorldStateFile(MakeTestFilePath(
+        HTNFileHelpers::kWorldStatesDirectoryName, "axiom_overloads", HTNFileHelpers::kWorldStateFileExtension)));
+    HTNPlannerHook GeneratedHook(Database.GetWorldState());
+    ASSERT_TRUE(GeneratedHook.SetGeneratedPlannerDefinition(CreateAxiomOverloadsHTN_GetDefinition()));
+    HTNPlanningUnit Generated(Database, GeneratedHook, "run");
+#ifdef HTN_DEBUG_DECOMPOSITION
+    HTNGeneratedDebugger Debugger;
+    Debugger.SetEnabled(true);
+    Generated.SetGeneratedDebugger(&Debugger);
+#endif
+    struct Case { const char* Entry; const char* Expected; };
+    const Case Cases[] = {
+        {"run", "!overloads 70 9"},
+        {"mismatch", "!controlled_failure"},
+        {"io_mismatch", "!controlled_failure"},
+        {"backtrack", "!selected 71"},
+        {"io_backtrack", "!selected_io 70 10"},
+        {"io_bound_backtrack", "!selected_io 71 9"},
+        {"run", "!overloads 70 9"}
+    };
+    for (const Case& Test : Cases)
+    {
+        SCOPED_TRACE(Test.Entry);
+        const auto* Entry = HtnSymbol::sGetSymbol(Test.Entry);
+        const auto GeneratedStatus = Generated.DecomposeTopLevelMethod(Entry);
+        std::string Trace;
+#ifdef HTN_DEBUG_DECOMPOSITION
+        if (GeneratedStatus != HTN_DECOMPOSITION_SUCCEEDED)
+            for (const auto& Node : Debugger.GetNodes())
+                if (Node.Started && Node.Completed)
+                    Trace += Node.DisplayName + " @" + std::to_string(Node.Source.Line) +
+                        (Node.Succeeded ? " succeeded\n" : " failed\n");
+#endif
+        ASSERT_EQ(GeneratedStatus, HTN_DECOMPOSITION_SUCCEEDED) << Trace;
+        EXPECT_EQ(FormatPlan(Generated.GetLastDecomposition().GetResult()),
+                  (std::vector<std::string>{Test.Expected}));
+    }
+}
+
+extern "C" const HTNGeneratedPlannerDefinition* CreateNestedAxiomChoicesHTN_GetDefinition(void);
+
+TEST(HTNGeneratedAxiomTest, NestedChoicesPreserveBindingsAndBacktrack)
+{
+    HTNAtomLifetimeBalanceScope AtomLifetimeBalance;
+    HTNDatabaseHook Database;
+    auto& WorldState = Database.GetWorldState();
+    WorldState.AddFact("candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{1})});
+    WorldState.AddFact("candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{2})});
+    WorldState.AddFact("seed", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{2})});
+    WorldState.AddFact("first_candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{1})});
+    WorldState.AddFact("pair_candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{1}), HTNAtomOwner(int32{2})});
+    WorldState.AddFact("pair_candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{2}), HTNAtomOwner(int32{2})});
+    WorldState.AddFact("state", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{9})});
+    WorldState.AddFact("state", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{10})});
+    WorldState.AddFact("seed_state", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{9})});
+    WorldState.AddFact("text_candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(std::string("first candidate with owned string storage"))});
+    WorldState.AddFact("text_candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(std::string("second candidate with owned string storage"))});
+
+    HTNPlannerHook GeneratedHook(WorldState);
+    ASSERT_TRUE(GeneratedHook.SetGeneratedPlannerDefinition(CreateNestedAxiomChoicesHTN_GetDefinition()));
+    HTNPlanningUnit Generated(Database, GeneratedHook, "out_backtrack");
+#ifdef HTN_DEBUG_DECOMPOSITION
+    HTNGeneratedDebugger Debugger;
+    Debugger.SetEnabled(true);
+    Generated.SetGeneratedDebugger(&Debugger);
+#endif
+    struct Case { const char* Entry; const char* Expected; };
+    const Case Cases[] = {
+        {"out_backtrack", "!selected 2"},
+        {"out_literal", "!selected 2"},
+        {"out_arithmetic", "!selected 2"},
+        {"out_bound", "!selected 2"},
+        {"out_mismatch", "!fallback"},
+        {"out_owned_literal", "!selected 2"},
+        {"alt_preserves_bound", "!selected 1"},
+        {"alias_outputs", "!selected 2"},
+        {"nested_and", "!selected 2"},
+        {"alt_choice", "!selected 2"},
+        {"or_cut", "!fallback"},
+        {"not_scope", "!selected 2"},
+        {"io_backtrack", "!selected 2"},
+        {"deep_backtrack", "!selected 2"},
+        {"first_solution", "!selected 1"},
+        {"io_bound", "!selected 2"},
+        {"io_mismatch", "!fallback"},
+        {"exhausted", "!selected 1"},
+        {"internal_filter", "!selected 2"},
+        {"pair_backtrack", "!pair 2 10"},
+        {"pair_bound", "!pair 2 9"},
+        {"two_calls", "!pair 2 2"},
+        {"string_backtrack", "!selected \"second candidate with owned string storage\""},
+        {"out_backtrack", "!selected 2"}
+    };
+    const auto Check = [&](const char* inEntry, const char* inExpected) {
+        SCOPED_TRACE(inEntry);
+        const auto* Entry = HtnSymbol::sGetSymbol(inEntry);
+        ASSERT_EQ(Generated.DecomposeTopLevelMethod(Entry), HTN_DECOMPOSITION_SUCCEEDED);
+#ifdef HTN_DEBUG_DECOMPOSITION
+        for (const auto& Node : Debugger.GetNodes())
+            if (Node.Started) EXPECT_TRUE(Node.Completed) << Node.DisplayName;
+#endif
+        EXPECT_EQ(FormatPlan(Generated.GetLastDecomposition().GetResult()),
+                  (std::vector<std::string>{inExpected}));
+    };
+    for (const Case& Test : Cases)
+        Check(Test.Entry, Test.Expected);
+    if ((CreateNestedAxiomChoicesHTN_GetDefinition()->features & HTN_GENERATED_FEATURE_RUNTIME_BACKTRACKING) != 0u)
+    {
+        Generated.GetExecutionContext().BacktrackingMode = HTN_BACKTRACKING_BRANCHES;
+        for (const char* EntryName : {"out_literal", "alt_choice", "nested_and"})
+        {
+            SCOPED_TRACE(EntryName);
+            const auto* Entry = HtnSymbol::sGetSymbol(EntryName);
+            EXPECT_EQ(Generated.DecomposeTopLevelMethod(Entry), HTN_DECOMPOSITION_NO_PLAN);
+        }
+        Generated.GetExecutionContext().BacktrackingMode = HTN_BACKTRACKING_ALL;
+        Check("out_literal", "!selected 2");
+    }
+    WorldState.RemoveFact("candidate", 1u, 0u);
+    WorldState.RemoveFact("candidate", 1u, 0u);
+    Check("no_candidates", "!fallback");
+    WorldState.AddFact("candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{2})});
+    Check("out_backtrack", "!selected 2");
+}
+
+TEST(HTNGeneratedAxiomTest, BacktrackingResumesWithoutReplayingHostEffects)
+{
+    HTNAtomLifetimeBalanceScope AtomLifetimeBalance;
+    HTNDatabaseHook Database;
+    auto& WorldState = Database.GetWorldState();
+    WorldState.AddFact("candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{1})});
+    WorldState.AddFact("candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{2})});
+    WorldState.AddFact("first_candidate", std::vector<HTNAtomOwner>{HTNAtomOwner(int32{1})});
+    std::vector<int32> Trace;
+    HTNCallTermRegistry Registry;
+    Registry.Bind("axiom_trace", [&](const HTNCallTermArguments& inArguments) -> bool {
+        Trace.push_back(HTNAtomGetValue<int32>(inArguments[0]));
+        return true;
+    });
+    Registry.Bind("axiom_value", [&](const HTNCallTermArguments&) -> int32 {
+        Trace.push_back(42);
+        return 42;
+    });
+    HTNPlannerHook GeneratedHook(WorldState, Registry);
+    ASSERT_TRUE(GeneratedHook.SetGeneratedPlannerDefinition(CreateNestedAxiomChoicesHTN_GetDefinition()));
+    HTNPlanningUnit Generated(Database, GeneratedHook, "effects");
+    Generated.GetExecutionContext().MissingCallTermPolicy = HTNMissingCallTermPolicy::FailSilently;
+    struct Case
+    {
+        const char* Entry;
+        std::vector<int32> Trace;
+        const char* Plan;
+    };
+    const Case Cases[] = {
+        {"effects", {0, 42, 1, 2}, "!selected 2"},
+        {"effects_exhausted", {0, 42, 1, 2}, "!fallback"},
+        {"effects_nested", {10, 0, 42, 1, 2}, "!selected 2"},
+        {"qualified_or", {}, "!selected 2"},
+        {"effects_alt_exhausted", {1, 2, 10}, "!fallback"},
+        {"effects", {0, 42, 1, 2}, "!selected 2"}
+    };
+    for (const Case& Test : Cases)
+    {
+        SCOPED_TRACE(Test.Entry);
+        const auto* Entry = HtnSymbol::sGetSymbol(Test.Entry);
+        Trace.clear();
+        ASSERT_EQ(Generated.DecomposeTopLevelMethod(Entry), HTN_DECOMPOSITION_SUCCEEDED);
+        EXPECT_EQ(Trace, Test.Trace);
+        const auto GeneratedPlan = Generated.GetLastDecomposition().GetResult();
+        EXPECT_EQ(FormatPlan(GeneratedPlan), (std::vector<std::string>{Test.Plan}));
+    }
+}

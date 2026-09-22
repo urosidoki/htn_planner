@@ -2,6 +2,7 @@
 
 #include "Translator/HTNCompilerDomainLexer.h"
 
+#include "Core/HTNDomainSyntax.h"
 #include "Translator/HTNCompilerDomainLexerContext.h"
 #include "Parser/HTNLexerHelpers.h"
 #include "Parser/HTNTokenType.h"
@@ -36,7 +37,7 @@ bool HTNCompilerDomainLexer::Lex(HTNCompilerDomainLexerContext& ioDomainLexerCon
             ioDomainLexerContext.AdvancePosition();
             break;
         }
-        case '!': {
+        case HTNPrimitiveTaskPrefix: {
             static constexpr uint32 LookAhead = 1;
             if (ioDomainLexerContext.GetCharacter(LookAhead) == '=')
             {
@@ -118,19 +119,24 @@ bool HTNCompilerDomainLexer::Lex(HTNCompilerDomainLexerContext& ioDomainLexerCon
             ioDomainLexerContext.AdvancePosition();
             break;
         }
-        case '?': {
+        case HTNVariablePrefix: {
             // Question mark
             ioDomainLexerContext.AddToken(HTNAtomOwner(), HTNTokenType::QUESTION_MARK HTN_LOG_ONLY(, std::string(1, Character)));
             ioDomainLexerContext.AdvancePosition();
             break;
         }
-        case '#': {
+        case HTNAxiomCallPrefix: {
             // Hash
             ioDomainLexerContext.AddToken(HTNAtomOwner(), HTNTokenType::HASH HTN_LOG_ONLY(, std::string(1, Character)));
             ioDomainLexerContext.AdvancePosition();
             break;
         }
-        case '@': {
+        case HTNDeferredCallPrefix: {
+            ioDomainLexerContext.AddToken(HTNAtomOwner(), HTNTokenType::AMPERSAND HTN_LOG_ONLY(, std::string(1, Character)));
+            ioDomainLexerContext.AdvancePosition();
+            break;
+        }
+        case HTNConstantPrefix: {
             // At
             ioDomainLexerContext.AddToken(HTNAtomOwner(), HTNTokenType::AT HTN_LOG_ONLY(, std::string(1, Character)));
             ioDomainLexerContext.AdvancePosition();
@@ -154,6 +160,7 @@ bool HTNCompilerDomainLexer::Lex(HTNCompilerDomainLexerContext& ioDomainLexerCon
             Result = LexString(ioDomainLexerContext) && Result;
             break;
         }
+        case '\r':
         case ' ': {
             // Whitespace
             ioDomainLexerContext.AdvancePosition();
@@ -173,7 +180,7 @@ bool HTNCompilerDomainLexer::Lex(HTNCompilerDomainLexerContext& ioDomainLexerCon
             if (HTNLexerHelpers::IsDigit(Character))
             {
                 // Number
-                LexNumber(ioDomainLexerContext);
+                Result = LexNumber(ioDomainLexerContext) && Result;
                 break;
             }
             else if (HTNLexerHelpers::IsLetter(Character))

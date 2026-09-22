@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "Core/HTNPlannerExecutionContext.h"
+
 #include "Core/HtnSymbol.h"
 #include "Core/HTNBacktrackingMode.h"
 #include "Core/HTNAtomCpp.h"
@@ -59,9 +61,19 @@ public:
 
 #ifdef HTN_DEBUG_DECOMPOSITION
     // Optional per-instance event debugger for generated execution. Caller retains ownership.
-    void SetGeneratedDebugger(HTNGeneratedDebugger* inDebugger) { mGeneratedDebugger = inDebugger; }
-    HTN_NODISCARD HTNGeneratedDebugger* GetGeneratedDebugger() const { return mGeneratedDebugger; }
+    void SetGeneratedDebugger(HTNGeneratedDebugger* inDebugger) { mExecutionContext.GeneratedDebugger = inDebugger; }
+    HTN_NODISCARD HTNGeneratedDebugger* GetGeneratedDebugger() const { return mExecutionContext.GeneratedDebugger; }
 #endif
+
+    // Configure runtime options directly while idle. Call/world/storage fields are
+    // supplied by the planning unit for each execution, including deferred calls.
+    HTNPlannerExecutionContext& GetExecutionContext() { return mExecutionContext; }
+    const HTNPlannerExecutionContext& GetExecutionContext() const { return mExecutionContext; }
+
+    // Borrowed services copied into every execution, including deferred calls.
+    // Configure only while idle; keep the payload alive while the plan is used.
+    void SetClientContext(void* inClientContext) { mExecutionContext.ClientContext = inClientContext; }
+    void* GetClientContext() const { return mExecutionContext.ClientContext; }
 
     // Decomposes a caller-owned top-level call and installs the active plan.
     // The call is borrowed during synchronous planning, never retained or modified.
@@ -99,7 +111,7 @@ public:
     // The planning unit owns the active plan produced by DecomposeTopLevelMethod.
     // ResolveCurrentPrimitiveTask expands any deferred calls at the current slot
     // until either a primitive task is ready, the plan is complete, or a deferred
-    // decomposition fails. Consumers never need to inspect or splice #calls.
+    // decomposition fails. Consumers never need to inspect or splice &calls.
     HTNPrimitiveTaskResolution ResolveCurrentPrimitiveTask();
     HTN_NODISCARD const HTNAtomOwner* GetCurrentPrimitiveTask() const;
     void CompleteCurrentPrimitiveTask();
@@ -118,10 +130,10 @@ private:
     void SetCurrentPlanFromLastDecomposition();
     bool EnsureGeneratedExecutionStorage();
 
+    HTNPlannerExecutionContext mExecutionContext{};
     HTNDatabaseHook& mDatabaseHook;
     HTNPlannerHook&        mPlannerHook;
     const HtnSymbol*        mDefaultTopLevelMethod = nullptr;
-    HTNBacktrackingMode     mBacktrackingMode = HTN_BACKTRACKING_ALL;
 
     HTNGeneratedPlanResult mLastDecomposition;
     std::vector<HTNAtomOwner> mCurrentPlan;
@@ -133,7 +145,6 @@ private:
     void* mGeneratedExecutionStorage = nullptr;
     const HTNGeneratedPlannerDefinition* mGeneratedExecutionDefinition = nullptr;
 #ifdef HTN_DEBUG_DECOMPOSITION
-    HTNGeneratedDebugger* mGeneratedDebugger = nullptr;
 #endif
 #ifdef HTN_GENERATED_EXECUTION_PROFILING
     HTNPlanningUnitGeneratedTimingBreakdown mLastGeneratedTimingBreakdown;
@@ -151,7 +162,7 @@ inline HTNDecompositionStatus HTNPlanningUnit::DecomposeTopLevelMethod(
     if (!inTopLevelMethod)
         return HTN_DECOMPOSITION_INVALID_CALL;
 
-    HTNAtom Call = HTNAtom::sCreateCall(inTopLevelMethod, std::forward<TArguments>(inArguments)...);
+    HTNAtom Call = HTNAtom::sCreateCallWithContext(mExecutionContext.ClientContext, inTopLevelMethod, std::forward<TArguments>(inArguments)...);
     if (!HTNAtom_IsBound(&Call))
     {
         HTNAtom::sDestroy(Call);
@@ -186,12 +197,12 @@ inline const std::string& HTNPlanningUnit::GetDefaultTopLevelMethodID() const
 
 inline void HTNPlanningUnit::SetBacktrackingMode(const HTNBacktrackingMode inBacktrackingMode)
 {
-    mBacktrackingMode = inBacktrackingMode;
+    mExecutionContext.BacktrackingMode = inBacktrackingMode;
 }
 
 inline HTNBacktrackingMode HTNPlanningUnit::GetBacktrackingMode() const
 {
-    return mBacktrackingMode;
+    return mExecutionContext.BacktrackingMode;
 }
 
 inline const HTNGeneratedPlanResult& HTNPlanningUnit::GetLastDecomposition() const

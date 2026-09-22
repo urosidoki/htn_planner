@@ -14,7 +14,7 @@ The repository includes:
 - An editor, language server, hot reload example, tests and benchmarks.
 - A packageable Windows x64 SDK with CMake integration.
 
-The current stable version is **1.1.0**. The generated planner and runtime bridge
+This branch prepares **2.0.0**. See the [release notes and migration guide](docs/RELEASE_2_0_0.md). The generated planner and runtime bridge
 ABIs are versioned and validated at runtime.
 
 ## Domain example
@@ -39,6 +39,12 @@ ABIs are versioned and validated at runtime.
 A successful decomposition returns a plan containing the primitive tasks
 `!move_to` and `!scan_area`. The engine assigns meaning to those tasks and decides
 when they start, complete or fail.
+
+## Choosing an integration pattern
+
+See [Planner use cases](docs/USE_CASES.md) for NPC behavior, active-plan validation,
+squad coordination and AI Director integration flows. The client owns action
+execution, scheduling and cancellation.
 
 ## Requirements
 

@@ -1,0 +1,23 @@
+// Copyright (c) 2026 Jose Antonio Escribano joseantonioescribanoayllon@gmail.com
+
+(:domain MissingCallTerms top_level_domain
+    (:method (condition) top_level_method
+        (try (and (call probe)) ((!unexpected)))
+        (fallback () ((!fallback))))
+    (:method (binding) top_level_method
+        (try (and (?value (call probe))) ((!unexpected ?value)))
+        (fallback () ((!fallback))))
+    (:method (primitive) top_level_method
+        (try () ((!use (call probe)))))
+    (:method (compound) top_level_method
+        (try () ((sink (call probe)))))
+    (:method (nested) top_level_method
+        (try () ((!use (call identity (call probe))))))
+    (:method (deferred) top_level_method
+        (later () ((&nested))))
+    (:method (unused) top_level_method
+        (safe () ((!safe)))
+        (unreached (and (call probe)) ((!unexpected))))
+    (:method (sink ?inp_value)
+        (use () ((!use ?inp_value))))
+)

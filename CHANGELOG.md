@@ -3,7 +3,16 @@
 All notable changes to HTN Planner are documented in this file. Releases follow
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 2.0.0 - In preparation
+
+- Method and axiom overloads by arity.
+- Arithmetic arguments across task, callterm and axiom calls.
+- Nested axiom backtracking and bound-output unification fixes.
+- Deferred calls use `&`; `#` is reserved for axioms.
+- Execution-owned client context, context-aware converters and missing-callterm policies.
+- Located frontend diagnostics and public integration use cases.
+- **Migration required:** domain syntax, custom converters and runtime ABI changed.
+  See [release notes](docs/RELEASE_2_0_0.md).
 
 ## 1.1.0 - 2026-09-20
 

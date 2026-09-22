@@ -19,11 +19,14 @@ operation: the first compatible table wins and later calls are accepted only whe
 identical. Shipping builds continue to compile generated domains directly into the executable.
 
 The host table is `HTNHostRuntimeAPI`, declared in `Translator/HTNRuntimeBridge.h`.
-Its `HTN_RUNTIME_BRIDGE_ABI_VERSION` has revision 3 after exposing the execution
-reset required by detailed profiling. Rebuild the host, bridge and imported domain modules together; old bridge
+Its `HTN_RUNTIME_BRIDGE_ABI_VERSION` has revision 6: callterm invocation receives the execution descriptor, including
+client context, missing-callterm policy and report callback. Rebuild the host, bridge and imported domain modules together; old bridge
 tables are rejected. This is separate from the planner descriptor ABI below.
 Callterm C declarations live in `Translator/HTNCallTermBridge.h`; the
-`HTNGeneratedCallTerm` representation and resolve/invoke exports are unchanged.
+`HTNGeneratedCallTerm` representation and resolve export are unchanged; both
+invoke exports now receive `HTNGeneratedPlannerContext` instead of bindings.
+New generated code uses `HTNCallTermRegistry_InvokeGeneratedCallTermWithSource`.
+See [Missing callterm policy](../../../docs/MISSING_CALLTERMS.md) for client configuration.
 
 The module must outlive its definition and every prepared/execution storage object created from it.
 For a custom core host, destroy all execution/prepared storage and stop using the
@@ -211,3 +214,16 @@ disabled. Once runtime support is enabled for that generated planner, the same g
 shared by planning units using different `HTNBacktrackingMode` values.
 
 The CLI option is `--runtime-backtracking-support=disabled|enabled` and defaults to `disabled`.
+
+## Execution client context
+
+Set `HTNGeneratedPlannerContext::client_context` for core execution, or
+`HTNPlannerExecutionContext::ClientContext` through the integration hook.
+The integration planning units expose `GetExecutionContext()`; set ClientContext,
+MissingCallTermPolicy, MissingCallTermCallback and BacktrackingMode directly.
+They copy runtime options into each execution, including deferred calls. The borrowed pointer is not kept in bindings
+or cached generated storage. Converters and missing-callterm callbacks receive it.
+
+This changes the generated execution ABI: plain `0x48540004`, debug `0x48550005`,
+profiling `0x48560004`, debug/profiling `0x48570005`. Regenerate and rebuild domains,
+host and runtime bridge together. See [conversion migration](../../../docs/TYPE_CONVERSION.md).

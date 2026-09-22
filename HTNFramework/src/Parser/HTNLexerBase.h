@@ -24,7 +24,7 @@ protected:
     void LexIdentifier(const std::unordered_map<std::string, HTNTokenType>& inKeywords, HTNLexerContextBase& ioLexerContext) const;
 
     // Lexes a number
-    void LexNumber(HTNLexerContextBase& ioLexerContext) const;
+    bool LexNumber(HTNLexerContextBase& ioLexerContext) const;
 
     // Lexes a string
     bool LexString(HTNLexerContextBase& ioLexerContext) const;

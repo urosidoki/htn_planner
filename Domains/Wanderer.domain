@@ -27,7 +27,7 @@
             )
             (
                 (move_to_async ?from_location ?to_location)
-                (#talk_about_destination)
+                (&talk_about_destination)
                 (!after_destination_comment)
             )
         )

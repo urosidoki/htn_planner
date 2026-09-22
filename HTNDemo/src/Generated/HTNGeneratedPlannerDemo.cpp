@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Jose Antonio Escribano joseantonioescribanoayllon@gmail.com
 
 #include "Generated/HTNGeneratedPlannerDemo.h"
+#include "HTNDemoCallTermReporting.h"
 
 #include "WorldState/HTNWorldState.h"
 
@@ -21,6 +22,8 @@ HTNGeneratedPlannerBenchmarkSample BenchmarkGeneratedPlannerOnce(
         return Sample;
 
     HTNGeneratedPlannerContext Context{};
+    Context.missing_callterm_policy = HTNMissingCallTermPolicy::Report;
+    Context.missing_callterm_callback = ReportGeneratedDemoMissingCallTerm;
     Context.world_state = &inWorldState;
     Context.callterm_binding_context = &inCallTermBindingContext;
     Context.backtracking_mode = inBacktrackingMode;

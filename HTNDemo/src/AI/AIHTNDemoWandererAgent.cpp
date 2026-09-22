@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Jose Antonio Escribano joseantonioescribanoayllon@gmail.com
 
+#include "HTNDemoCallTermReporting.h"
 #include "AI/AIHTNDemoWandererAgent.h"
 
 #include "Core/HTNFileHelpers.h"
@@ -132,6 +133,8 @@ bool AIHTNDemoWandererAgent::Initialize()
     }
 
     mPlanningUnit = std::make_unique<HTNPlanningUnit>(*mDatabaseHook, *mPlannerHook, "run");
+    mPlanningUnit->GetExecutionContext().MissingCallTermPolicy = HTNMissingCallTermPolicy::Report;
+    mPlanningUnit->GetExecutionContext().MissingCallTermCallback = ReportGeneratedDemoMissingCallTerm;
 #ifdef HTN_DEBUG_DECOMPOSITION
     mGeneratedDebugger.SetEnabled(true);
     mPlanningUnit->SetGeneratedDebugger(&mGeneratedDebugger);
@@ -199,6 +202,8 @@ bool AIHTNDemoWandererAgent::AttachGeneratedPlanner(const HTNGeneratedPlannerDef
         return false;
     mGeneratedDefinition = inDefinition;
     mPlanningUnit = std::make_unique<HTNPlanningUnit>(*mDatabaseHook, *mPlannerHook, "run");
+    mPlanningUnit->GetExecutionContext().MissingCallTermPolicy = HTNMissingCallTermPolicy::Report;
+    mPlanningUnit->GetExecutionContext().MissingCallTermCallback = ReportGeneratedDemoMissingCallTerm;
 #ifdef HTN_DEBUG_DECOMPOSITION
     mGeneratedDebugger.SetEnabled(true);
     mPlanningUnit->SetGeneratedDebugger(&mGeneratedDebugger);

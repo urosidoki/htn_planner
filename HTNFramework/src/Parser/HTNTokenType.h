@@ -15,6 +15,7 @@ enum class HTNTokenType : uint8
     EXCLAMATION_MARK,
     QUESTION_MARK,
     HASH,
+    AMPERSAND,
     AT,
 
     EQUAL_EQUAL,

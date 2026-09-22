@@ -53,6 +53,7 @@ bool HTNWorldStateLexer::Lex(HTNWorldStateLexerContext& ioWorldStateLexerContext
             Result = LexString(ioWorldStateLexerContext) && Result;
             break;
         }
+        case '\r':
         case ' ': {
             // Whitespace
             ioWorldStateLexerContext.AdvancePosition();
@@ -67,7 +68,7 @@ bool HTNWorldStateLexer::Lex(HTNWorldStateLexerContext& ioWorldStateLexerContext
             if (HTNLexerHelpers::IsDigit(Character))
             {
                 // Number
-                LexNumber(ioWorldStateLexerContext);
+                Result = LexNumber(ioWorldStateLexerContext) && Result;
                 break;
             }
             else if (HTNLexerHelpers::IsLetter(Character))

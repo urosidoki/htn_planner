@@ -26,28 +26,24 @@ HTNPlanningUnit::HTNPlanningUnit(HTNDatabaseHook& inDatabaseHook, HTNPlannerHook
     , mPlannerHook(inPlannerHook)
     , mDefaultTopLevelMethod(inDefaultTopLevelMethod)
 {
+    mExecutionContext.BacktrackingMode = HTN_BACKTRACKING_ALL;
 }
 
 
 HTNPlanningUnit::HTNPlanningUnit(HTNPlanningUnit&& inOther) noexcept
-    : mDatabaseHook(inOther.mDatabaseHook)
+    : mExecutionContext(inOther.mExecutionContext)
+    , mDatabaseHook(inOther.mDatabaseHook)
     , mPlannerHook(inOther.mPlannerHook)
     , mDefaultTopLevelMethod(inOther.mDefaultTopLevelMethod)
-    , mBacktrackingMode(inOther.mBacktrackingMode)
     , mLastDecomposition(std::move(inOther.mLastDecomposition))
     , mCurrentPlan(std::move(inOther.mCurrentPlan))
     , mCurrentPrimitiveTaskIndex(inOther.mCurrentPrimitiveTaskIndex)
     , mGeneratedExecutionStorage(std::exchange(inOther.mGeneratedExecutionStorage, nullptr))
     , mGeneratedExecutionDefinition(std::exchange(inOther.mGeneratedExecutionDefinition, nullptr))
-#ifdef HTN_DEBUG_DECOMPOSITION
-    , mGeneratedDebugger(std::exchange(inOther.mGeneratedDebugger, nullptr))
-#endif
 #ifdef HTN_GENERATED_EXECUTION_PROFILING
     , mLastGeneratedTimingBreakdown(inOther.mLastGeneratedTimingBreakdown)
     , mLastGeneratedStructuralCounters(inOther.mLastGeneratedStructuralCounters)
     , mGeneratedExecutionStorageCreatedThisExecution(inOther.mGeneratedExecutionStorageCreatedThisExecution)
-#endif
-#ifdef HTN_DEBUG_DECOMPOSITION
 #endif
 {
 }
@@ -128,17 +124,12 @@ HTNDecompositionStatus HTNPlanningUnit::ExecuteCall(const HTNAtom& inCall, const
     mLastGeneratedTimingBreakdown.ExecutionStorageCreated = mGeneratedExecutionStorageCreatedThisExecution;
 #endif
 
-    HTNPlannerExecutionContext ExecutionContext{
-        &mPlannerHook.GetWorldState(),
-        &mPlannerHook.GetCallTermBindingContext(),
-        &inCall,
-        nullptr,
-        mBacktrackingMode,
-        mGeneratedExecutionStorage
-#ifdef HTN_DEBUG_DECOMPOSITION
-        , mGeneratedDebugger
-#endif
-    };
+    HTNPlannerExecutionContext ExecutionContext = mExecutionContext;
+    ExecutionContext.WorldState = &mPlannerHook.GetWorldState();
+    ExecutionContext.CallTermBindingContext = &mPlannerHook.GetCallTermBindingContext();
+    ExecutionContext.Call = &inCall;
+    ExecutionContext.Result = nullptr;
+    ExecutionContext.GeneratedExecutionStorage = mGeneratedExecutionStorage;
 
 #ifdef HTN_GENERATED_EXECUTION_PROFILING
     const auto GeneratedContextStart = std::chrono::steady_clock::now();

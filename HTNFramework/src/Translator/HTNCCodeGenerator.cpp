@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <limits>
 #include <locale>
@@ -147,15 +148,12 @@ struct ConditionAnalysis
 {
     BoundVariableSet BoundAfter;
     bool MayProduceMultipleSolutions = false;
-    bool MayBindVariables = false;
-    bool HasSideEffects = false;
-    bool CanLowerToCFG = true;
 };
 
-const AxiomRecord* FindAxiomRecord(const HTNCompilerIR& inBuilder, const uint32 inId)
+const AxiomRecord* FindAxiomRecord(const HTNCompilerIR& inBuilder, const uint32 inId, const uint32 inArgumentCount)
 {
     for (const AxiomRecord& Axiom : inBuilder.Axioms)
-        if (Axiom.Id == inId)
+        if (Axiom.Id == inId && Axiom.ParameterCount == inArgumentCount)
             return &Axiom;
     return nullptr;
 }
@@ -166,309 +164,61 @@ bool IsOutputParameterName(const std::string& inName)
 }
 
 ConditionAnalysis AnalyzeCondition(const HTNCompilerIR& inBuilder, const uint32 inConditionIndex,
-                                   const BoundVariableSet& inBound, const bool inExpandAxiomBodies = true,
-                                   const uint32 inAxiomExpansionDepth = 0u)
+                                   const BoundVariableSet& inBound)
 {
     ConditionAnalysis Result;
     Result.BoundAfter = inBound;
     if (inConditionIndex == kNoIndex || inConditionIndex >= inBuilder.Conditions.size())
         return Result;
-
     const ConditionRecord& Condition = inBuilder.Conditions[inConditionIndex];
+    const auto Bind = [&](const ValueRecord& inValue) {
+        if (inValue.Kind == HTNIRValueKind::Variable && inValue.VariableSlot != kNoIndex)
+            Result.BoundAfter.insert(inValue.Text);
+    };
     switch (Condition.Kind)
     {
     case HTN_CONDITION_FACT:
         for (uint32 I = 0; I < Condition.ArgumentCount; ++I)
         {
-            const ValueRecord& Value = inBuilder.Values[Condition.FirstArgument + I];
-            if (Value.Kind != HTNIRValueKind::Variable || Value.VariableSlot == kNoIndex)
-                continue;
-            if (Result.BoundAfter.find(Value.Text) == Result.BoundAfter.end())
-            {
+            const auto& Value = inBuilder.Values[Condition.FirstArgument + I];
+            if (Value.Kind == HTNIRValueKind::Variable && Value.VariableSlot != kNoIndex && !inBound.contains(Value.Text))
                 Result.MayProduceMultipleSolutions = true;
-                Result.MayBindVariables = true;
-                Result.BoundAfter.insert(Value.Text);
-            }
+            Bind(Value);
         }
         break;
-
     case HTN_CONDITION_AXIOM:
-    {
-        // Axiom calls can be lowered when their body is deterministic under
-        // source-order semantics. Nested axiom calls remain
-        // conservative to avoid recursive compile-time expansion.
-        Result.MayProduceMultipleSolutions = true;
-        Result.HasSideEffects = true;
-        Result.CanLowerToCFG = false;
-        const AxiomRecord* Axiom = FindAxiomRecord(inBuilder, Condition.Id);
-        if (Axiom)
-        {
-            const uint32 Count = std::min(Axiom->ParameterCount, Condition.ArgumentCount);
-            for (uint32 I = 0; I < Count; ++I)
-            {
-                const ValueRecord& Parameter = inBuilder.Values[Axiom->FirstParameter + I];
-                if (Parameter.Text >= inBuilder.Strings.Values.size() ||
-                    !IsOutputParameterName(inBuilder.Strings.Values[Parameter.Text]))
-                    continue;
-                const ValueRecord& Caller = inBuilder.Values[Condition.FirstArgument + I];
-                if (Caller.Kind == HTNIRValueKind::Variable)
-                {
-                    Result.MayBindVariables = true;
-                    Result.BoundAfter.insert(Caller.Text);
-                }
-            }
-
-            if (Axiom->Condition == kNoIndex)
-            {
-                // An axiom with an empty body is the logical identity (true).
-                // It is deterministic and can be lowered entirely by generated
-                // axiom scope control flow emitted directly by the generator.
-                Result.MayProduceMultipleSolutions = false;
-                Result.HasSideEffects = false;
-                Result.CanLowerToCFG = true;
-            }
-            else if (inExpandAxiomBodies && inAxiomExpansionDepth < inBuilder.Axioms.size())
-            {
-                BoundVariableSet AxiomBound;
-                for (uint32 I = 0; I < Axiom->ParameterCount; ++I)
-                {
-                    const ValueRecord& Parameter = inBuilder.Values[Axiom->FirstParameter + I];
-                    if (Parameter.Kind != HTNIRValueKind::Variable || Parameter.Text >= inBuilder.Strings.Values.size())
-                        continue;
-                    const std::string& Name = inBuilder.Strings.Values[Parameter.Text];
-                    if (Name.rfind("out_", 0) != 0)
-                        AxiomBound.insert(Parameter.Text);
-                }
-                // The linked domain has already resolved exact qualified implementations.
-                // Expand nested deterministic axioms as well so an override can call its
-                // base implementation (#Domain::axiom) without falling back to a generic
-                // generic evaluator. The depth bound makes direct generator use robust even
-                // if it receives an invalid cyclic domain outside the normal linker path.
-                const ConditionAnalysis Body = AnalyzeCondition(
-                    inBuilder, Axiom->Condition, AxiomBound, true, inAxiomExpansionDepth + 1u);
-                Result.MayProduceMultipleSolutions = Body.MayProduceMultipleSolutions;
-                Result.HasSideEffects = Body.HasSideEffects;
-                Result.CanLowerToCFG = Body.CanLowerToCFG && !Body.MayProduceMultipleSolutions;
-            }
-        }
+        if (const auto* Axiom = FindAxiomRecord(inBuilder, Condition.Id, Condition.ArgumentCount))
+            for (uint32 I = 0; I < Axiom->ParameterCount; ++I)
+                if (IsOutputParameterName(inBuilder.Strings.Values[inBuilder.Values[Axiom->FirstParameter + I].Text]))
+                    Bind(inBuilder.Values[Condition.FirstArgument + I]);
         break;
-    }
-
-    case HTN_CONDITION_CALL:
-        Result.HasSideEffects = true;
-        break;
-
     case HTN_CONDITION_CALL_BIND:
-        Result.HasSideEffects = true;
-        Result.MayBindVariables = true;
-        if (Condition.OutputValue != kNoIndex && Condition.OutputValue < inBuilder.Values.size())
-        {
-            const ValueRecord& Output = inBuilder.Values[Condition.OutputValue];
-            if (Output.Kind == HTNIRValueKind::Variable)
-                Result.BoundAfter.insert(Output.Text);
-        }
+        if (Condition.OutputValue != kNoIndex) Bind(inBuilder.Values[Condition.OutputValue]);
         break;
-
     case HTN_CONDITION_BUILTIN_LIST_SPLIT:
-        Result.MayBindVariables = true;
-        for (uint32 I = 1u; I < Condition.ArgumentCount; ++I)
-        {
-            const ValueRecord& Output = inBuilder.Values[Condition.FirstArgument + I];
-            if (Output.Kind == HTNIRValueKind::Variable)
-                Result.BoundAfter.insert(Output.Text);
-        }
+        for (uint32 I = 1; I < Condition.ArgumentCount; ++I) Bind(inBuilder.Values[Condition.FirstArgument + I]);
         break;
-
     case HTN_CONDITION_AND:
-    {
-        BoundVariableSet Current = inBound;
-        bool EarlierChoice = false;
         for (uint32 I = 0; I < Condition.ChildCount; ++I)
-        {
-            const uint32 Ref = Condition.FirstChildRef + I;
-            if (Ref >= inBuilder.ConditionChildRefs.size())
-            {
-                Result.CanLowerToCFG = false;
-                break;
-            }
-            const ConditionAnalysis Child = AnalyzeCondition(inBuilder, inBuilder.ConditionChildRefs[Ref], Current, inExpandAxiomBodies, inAxiomExpansionDepth);
-            if (I + 1u < Condition.ChildCount && Child.MayProduceMultipleSolutions)
-                EarlierChoice = true;
-            Result.MayProduceMultipleSolutions |= Child.MayProduceMultipleSolutions;
-            Result.MayBindVariables |= Child.MayBindVariables;
-            Result.HasSideEffects |= Child.HasSideEffects;
-            Current = Child.BoundAfter;
-        }
-        Result.BoundAfter = std::move(Current);
-        // Backtracking across earlier choice-producing children is emitted
-        // explicitly as generated retry labels.
-        (void)EarlierChoice;
-        Result.CanLowerToCFG = Result.CanLowerToCFG;
+            Result.BoundAfter = AnalyzeCondition(inBuilder, inBuilder.ConditionChildRefs[Condition.FirstChildRef + I], Result.BoundAfter).BoundAfter;
         break;
-    }
-
     case HTN_CONDITION_OR:
-    {
-        bool First = true;
-        BoundVariableSet Intersection;
-        bool AnyMayBind = false;
-        bool AnySideEffect = false;
-        for (uint32 I = 0; I < Condition.ChildCount; ++I)
-        {
-            const uint32 Ref = Condition.FirstChildRef + I;
-            if (Ref >= inBuilder.ConditionChildRefs.size())
-                continue;
-            const ConditionAnalysis Child = AnalyzeCondition(inBuilder, inBuilder.ConditionChildRefs[Ref], inBound, inExpandAxiomBodies, inAxiomExpansionDepth);
-            AnyMayBind |= Child.MayBindVariables;
-            AnySideEffect |= Child.HasSideEffects;
-            if (First)
-            {
-                Intersection = Child.BoundAfter;
-                First = false;
-            }
-            else
-            {
-                for (auto It = Intersection.begin(); It != Intersection.end(); )
-                {
-                    if (Child.BoundAfter.find(*It) == Child.BoundAfter.end()) It = Intersection.erase(It);
-                    else ++It;
-                }
-            }
-        }
-        Result.BoundAfter = First ? inBound : std::move(Intersection);
-        Result.MayProduceMultipleSolutions = false; // OR exports only its first successful solution
-        Result.MayBindVariables = AnyMayBind;
-        Result.HasSideEffects = AnySideEffect;
-        Result.CanLowerToCFG = true;
-        break;
-    }
-
     case HTN_CONDITION_ALT:
-    {
-        bool PureNoBind = true;
+        // Only bindings produced by every alternative are statically guaranteed.
         for (uint32 I = 0; I < Condition.ChildCount; ++I)
         {
-            const uint32 Ref = Condition.FirstChildRef + I;
-            if (Ref >= inBuilder.ConditionChildRefs.size())
-            {
-                PureNoBind = false;
-                continue;
-            }
-            const ConditionAnalysis Child = AnalyzeCondition(inBuilder, inBuilder.ConditionChildRefs[Ref], inBound, inExpandAxiomBodies, inAxiomExpansionDepth);
-            if (Child.MayBindVariables || Child.HasSideEffects || Child.BoundAfter != inBound)
-                PureNoBind = false;
+            const auto Child = AnalyzeCondition(inBuilder, inBuilder.ConditionChildRefs[Condition.FirstChildRef + I], inBound);
+            if (I == 0u) Result.BoundAfter = Child.BoundAfter;
+            else
+                for (auto It = Result.BoundAfter.begin(); It != Result.BoundAfter.end(); )
+                    if (!Child.BoundAfter.contains(*It)) It = Result.BoundAfter.erase(It);
+                    else ++It;
         }
-        // A pure ALT whose alternatives cannot change bindings is equivalent
-        // to boolean source-order alternatives; preserving several identical
-        // environments cannot affect later terms.
-        Result.MayProduceMultipleSolutions = !PureNoBind;
-        Result.CanLowerToCFG = PureNoBind;
-        Result.BoundAfter = inBound;
         break;
-    }
-
-    case HTN_CONDITION_NOT:
-    {
-        if (Condition.ChildCount != 0u)
-        {
-            const uint32 Ref = Condition.FirstChildRef;
-            if (Ref < inBuilder.ConditionChildRefs.size())
-            {
-                const ConditionAnalysis Child = AnalyzeCondition(inBuilder, inBuilder.ConditionChildRefs[Ref], inBound, inExpandAxiomBodies, inAxiomExpansionDepth);
-                Result.HasSideEffects = Child.HasSideEffects; // WorldState effects intentionally persist
-            }
-        }
-        Result.BoundAfter = inBound;
-        Result.MayProduceMultipleSolutions = false;
-        Result.MayBindVariables = false;
-        Result.CanLowerToCFG = true;
-        break;
-    }
     default:
-        Result.CanLowerToCFG = false;
         break;
     }
     return Result;
-}
-
-void CollectGeneratedChoiceCursors(const HTNCompilerIR& inBuilder, const uint32 inConditionIndex,
-                                   const BoundVariableSet& inBound,
-                                   std::vector<uint32>& outFactCursors,
-                                   std::vector<uint32>& outAxiomCursors,
-                                   const uint32 inAxiomExpansionDepth = 0u)
-{
-    if (inConditionIndex == kNoIndex || inConditionIndex >= inBuilder.Conditions.size())
-        return;
-
-    const ConditionRecord& Condition = inBuilder.Conditions[inConditionIndex];
-    const ConditionAnalysis Analysis = AnalyzeCondition(inBuilder, inConditionIndex, inBound);
-
-    if (Condition.Kind == HTN_CONDITION_AXIOM && Analysis.CanLowerToCFG)
-    {
-        const AxiomRecord* Axiom = FindAxiomRecord(inBuilder, Condition.Id);
-        if (!Axiom || Axiom->Condition == kNoIndex || inAxiomExpansionDepth >= inBuilder.Axioms.size())
-            return;
-
-        BoundVariableSet AxiomBound;
-        for (uint32 I = 0u; I < Axiom->ParameterCount; ++I)
-        {
-            const ValueRecord& Parameter = inBuilder.Values[Axiom->FirstParameter + I];
-            if (Parameter.Kind != HTNIRValueKind::Variable || Parameter.Text >= inBuilder.Strings.Values.size())
-                continue;
-            if (inBuilder.Strings.Values[Parameter.Text].rfind("out_", 0u) != 0u)
-                AxiomBound.insert(Parameter.Text);
-        }
-        CollectGeneratedChoiceCursors(inBuilder, Axiom->Condition, AxiomBound,
-                                      outFactCursors, outAxiomCursors, inAxiomExpansionDepth + 1u);
-        return;
-    }
-
-    if (Condition.Kind == HTN_CONDITION_AND)
-    {
-        BoundVariableSet Current = inBound;
-        for (uint32 I = 0u; I < Condition.ChildCount; ++I)
-        {
-            const uint32 Ref = Condition.FirstChildRef + I;
-            if (Ref >= inBuilder.ConditionChildRefs.size())
-                return;
-
-            const uint32 ChildIndex = inBuilder.ConditionChildRefs[Ref];
-            if (ChildIndex >= inBuilder.Conditions.size())
-                return;
-
-            const ConditionRecord& Child = inBuilder.Conditions[ChildIndex];
-            const ConditionAnalysis ChildAnalysis = AnalyzeCondition(inBuilder, ChildIndex, Current);
-            if (ChildAnalysis.MayProduceMultipleSolutions && Child.Kind == HTN_CONDITION_FACT)
-            {
-                if (std::find(outFactCursors.begin(), outFactCursors.end(), ChildIndex) == outFactCursors.end())
-                    outFactCursors.push_back(ChildIndex);
-            }
-            else if (ChildAnalysis.MayProduceMultipleSolutions && Child.Kind == HTN_CONDITION_AXIOM)
-            {
-                if (std::find(outAxiomCursors.begin(), outAxiomCursors.end(), ChildIndex) == outAxiomCursors.end())
-                    outAxiomCursors.push_back(ChildIndex);
-            }
-            else
-            {
-                CollectGeneratedChoiceCursors(inBuilder, ChildIndex, Current,
-                                              outFactCursors, outAxiomCursors, inAxiomExpansionDepth);
-            }
-            Current = ChildAnalysis.BoundAfter;
-        }
-        return;
-    }
-
-    if (Condition.Kind == HTN_CONDITION_OR || Condition.Kind == HTN_CONDITION_ALT ||
-        Condition.Kind == HTN_CONDITION_NOT)
-    {
-        for (uint32 I = 0u; I < Condition.ChildCount; ++I)
-        {
-            const uint32 Ref = Condition.FirstChildRef + I;
-            if (Ref < inBuilder.ConditionChildRefs.size())
-                CollectGeneratedChoiceCursors(inBuilder, inBuilder.ConditionChildRefs[Ref], inBound,
-                                              outFactCursors, outAxiomCursors, inAxiomExpansionDepth);
-        }
-    }
 }
 
 using GeneratedVariableWriteMap = std::unordered_map<uint32, uint32>;
@@ -530,7 +280,7 @@ void CollectGeneratedConditionWrites(const HTNCompilerIR& inBuilder,
 
     case HTN_CONDITION_AXIOM:
     {
-        const AxiomRecord* Axiom = FindAxiomRecord(inBuilder, Condition.Id);
+        const AxiomRecord* Axiom = FindAxiomRecord(inBuilder, Condition.Id, Condition.ArgumentCount);
         if (!Axiom)
             break;
         const uint32 Count = std::min(Axiom->ParameterCount, Condition.ArgumentCount);
@@ -585,27 +335,8 @@ void CollectGeneratedConditionWrites(const HTNCompilerIR& inBuilder,
 struct GeneratedCheckpointPlan
 {
     uint32 Id = 0u;
-    std::vector<uint32> UnboundSlots;
     std::vector<uint32> SavedSlots;
 };
-
-GeneratedCheckpointPlan BuildGeneratedCheckpointPlan(const uint32 inId,
-                                                       const BoundVariableSet& inBound,
-                                                       const GeneratedVariableWriteMap& inWrites)
-{
-    GeneratedCheckpointPlan Plan;
-    Plan.Id = inId;
-    for (const auto& [Variable, Slot] : inWrites)
-    {
-        if (inBound.find(Variable) == inBound.end())
-            Plan.UnboundSlots.push_back(Slot);
-        else
-            Plan.SavedSlots.push_back(Slot);
-    }
-    std::sort(Plan.UnboundSlots.begin(), Plan.UnboundSlots.end());
-    std::sort(Plan.SavedSlots.begin(), Plan.SavedSlots.end());
-    return Plan;
-}
 
 GeneratedCheckpointPlan BuildGeneratedConditionCheckpointPlan(const HTNCompilerIR& inBuilder,
                                                                 const uint32 inId,
@@ -614,44 +345,14 @@ GeneratedCheckpointPlan BuildGeneratedConditionCheckpointPlan(const HTNCompilerI
 {
     GeneratedVariableWriteMap Writes;
     CollectGeneratedConditionWrites(inBuilder, inCondition, inBound, Writes);
-    return BuildGeneratedCheckpointPlan(inId, inBound, Writes);
-}
-
-GeneratedCheckpointPlan BuildGeneratedAndSuffixCheckpointPlan(const HTNCompilerIR& inBuilder,
-                                                              const uint32 inId,
-                                                              const ConditionRecord& inAndCondition,
-                                                              const uint32 inChildOffset,
-                                                              const BoundVariableSet& inBound)
-{
-    GeneratedVariableWriteMap Writes;
-    BoundVariableSet Current = inBound;
-    for (uint32 I = inChildOffset; I < inAndCondition.ChildCount; ++I)
-    {
-        const uint32 Ref = inAndCondition.FirstChildRef + I;
-        if (Ref >= inBuilder.ConditionChildRefs.size())
-            break;
-        const uint32 Child = inBuilder.ConditionChildRefs[Ref];
-        CollectGeneratedConditionWrites(inBuilder, Child, Current, Writes);
-        Current = AnalyzeCondition(inBuilder, Child, Current).BoundAfter;
-    }
-    return BuildGeneratedCheckpointPlan(inId, inBound, Writes);
-}
-
-GeneratedCheckpointPlan BuildGeneratedFactSuffixCheckpointPlan(const HTNCompilerIR& inBuilder,
-                                                               const uint32 inId,
-                                                               const std::vector<uint32>& inFacts,
-                                                               const uint32 inFactOffset,
-                                                               const BoundVariableSet& inBound)
-{
-    GeneratedVariableWriteMap Writes;
-    BoundVariableSet Current = inBound;
-    for (uint32 I = inFactOffset; I < inFacts.size(); ++I)
-    {
-        const uint32 Fact = inFacts[I];
-        CollectGeneratedConditionWrites(inBuilder, Fact, Current, Writes);
-        Current = AnalyzeCondition(inBuilder, Fact, Current).BoundAfter;
-    }
-    return BuildGeneratedCheckpointPlan(inId, inBound, Writes);
+    GeneratedCheckpointPlan Plan;
+    Plan.Id = inId;
+    // An ALT may bind a variable without exporting it in the conservative bound
+    // set. Preserve actual runtime values rather than assuming unknown is unbound.
+    for (const auto& Write : Writes)
+        Plan.SavedSlots.push_back(Write.second);
+    std::sort(Plan.SavedSlots.begin(), Plan.SavedSlots.end());
+    return Plan;
 }
 
 void EmitGeneratedCheckpointDeclarations(CodeWriter& W, const GeneratedCheckpointPlan& inPlan)
@@ -702,66 +403,43 @@ void EmitGeneratedSetMoveIfChanged(CodeWriter& W, const uint32 inSlot, const std
 
 void EmitGeneratedCheckpointPush(CodeWriter& W, const GeneratedCheckpointPlan& inPlan, const char* inIndent = "    ")
 {
+    W.Out << inIndent << "HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
     W.Out << inIndent << "HTN_GENERATED_STRUCTURAL_EVENT(context, HTN_GENERATED_STRUCTURAL_CHECKPOINT_PUSH);\n";
     for (const uint32 Slot : inPlan.SavedSlots)
     {
-        W.Out << inIndent << "HTNAtom_Copy(&environment_checkpoint_" << inPlan.Id << "_slot_" << Slot
-              << ", HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, " << Slot << "u));\n";
+        const std::string Saved = "environment_checkpoint_" + std::to_string(inPlan.Id) + "_slot_" + std::to_string(Slot);
+        W.Out << inIndent << "{ const HTNAtom* checkpoint_value = HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, "
+              << Slot << "u);\n";
+        W.Out << inIndent << "  if (checkpoint_value) HTNAtom_Copy(&" << Saved << ", checkpoint_value);\n";
+        W.Out << inIndent << "  else HTNAtom_Init(&" << Saved << "); }\n";
     }
+    W.Out << inIndent << "HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
 }
 
 void EmitGeneratedCheckpointRollback(CodeWriter& W, const GeneratedCheckpointPlan& inPlan, const char* inIndent = "    ")
 {
+    W.Out << inIndent << "HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
     W.Out << inIndent << "HTN_GENERATED_STRUCTURAL_EVENT(context, HTN_GENERATED_STRUCTURAL_CHECKPOINT_ROLLBACK);\n";
-    for (const uint32 Slot : inPlan.UnboundSlots)
-        EmitGeneratedVariableUnbind(W, std::to_string(Slot) + "u", inIndent);
     for (const uint32 Slot : inPlan.SavedSlots)
     {
-        EmitGeneratedVariableSetMove(W, std::to_string(Slot) + "u",
-                                     "&environment_checkpoint_" + std::to_string(inPlan.Id) + "_slot_" + std::to_string(Slot),
-                                     inIndent);
-        W.Out << inIndent << "HTNAtom_Destroy(&environment_checkpoint_" << inPlan.Id << "_slot_" << Slot << ");\n";
+        const std::string Saved = "environment_checkpoint_" + std::to_string(inPlan.Id) + "_slot_" + std::to_string(Slot);
+        W.Out << inIndent << "if (HTNAtom_IsBound(&" << Saved << ")) {\n";
+        EmitGeneratedVariableSetMove(W, std::to_string(Slot) + "u", "&" + Saved, std::string(inIndent) + "    ");
+        W.Out << inIndent << "} else {\n";
+        EmitGeneratedVariableUnbind(W, std::to_string(Slot) + "u", std::string(inIndent) + "    ");
+        W.Out << inIndent << "}\n";
+        W.Out << inIndent << "HTNAtom_Destroy(&" << Saved << ");\n";
     }
+    W.Out << inIndent << "HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
 }
 
 void EmitGeneratedCheckpointCommit(CodeWriter& W, const GeneratedCheckpointPlan& inPlan, const char* inIndent = "    ")
 {
+    W.Out << inIndent << "HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
     W.Out << inIndent << "HTN_GENERATED_STRUCTURAL_EVENT(context, HTN_GENERATED_STRUCTURAL_CHECKPOINT_COMMIT);\n";
     for (const uint32 Slot : inPlan.SavedSlots)
         W.Out << inIndent << "HTNAtom_Destroy(&environment_checkpoint_" << inPlan.Id << "_slot_" << Slot << ");\n";
-}
-
-bool IsGeneratedAxiomChoiceSupported(const HTNCompilerIR& inBuilder, const uint32 inConditionIndex)
-{
-    if (inConditionIndex >= inBuilder.Conditions.size())
-        return false;
-    const ConditionRecord& Condition = inBuilder.Conditions[inConditionIndex];
-    if (Condition.Kind != HTN_CONDITION_AXIOM)
-        return false;
-    const AxiomRecord* Axiom = FindAxiomRecord(inBuilder, Condition.Id);
-    if (!Axiom || Axiom->Condition == kNoIndex || Axiom->Condition >= inBuilder.Conditions.size())
-        return false;
-
-    const ConditionRecord& Body = inBuilder.Conditions[Axiom->Condition];
-    if (Body.Kind == HTN_CONDITION_FACT)
-        return true;
-    if (Body.Kind != HTN_CONDITION_AND)
-        return false;
-    for (uint32 I = 0; I < Body.ChildCount; ++I)
-    {
-        const uint32 Ref = Body.FirstChildRef + I;
-        if (Ref >= inBuilder.ConditionChildRefs.size())
-            return false;
-        const uint32 Child = inBuilder.ConditionChildRefs[Ref];
-        if (Child >= inBuilder.Conditions.size() || inBuilder.Conditions[Child].Kind != HTN_CONDITION_FACT)
-            return false;
-    }
-    return true;
-}
-
-std::string GetGeneratedAxiomChoiceHelperName(const std::string& inDomainSymbol, const uint32 inConditionIndex)
-{
-    return inDomainSymbol + "_AXIOM_CHOICE_" + std::to_string(inConditionIndex);
+    W.Out << inIndent << "HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
 }
 
 std::string GetGeneratedFactChoiceHelperName(const std::string& inDomainSymbol, const uint32 inConditionIndex)
@@ -894,9 +572,26 @@ std::string FormatCFloatLiteral(const float inValue)
     return Text;
 }
 
+std::string FormatGeneratedArithmeticError(const HTNCompilerIR& inBuilder,
+                                           const ValueRecord& inValue,
+                                           const std::string& inContext)
+{
+    const std::string File = inValue.Source.FileIndex < inBuilder.SourceFiles.size()
+        ? inBuilder.SourceFiles[inValue.Source.FileIndex]
+        : std::string("<unknown domain>");
+    const int Line = std::max(1, inValue.Source.Range.Begin.Line);
+    const int Column = std::max(1, inValue.Source.Range.Begin.Column);
+    const std::string Expression = inValue.DebugText < inBuilder.Strings.Values.size()
+        ? inBuilder.Strings.Values[inValue.DebugText]
+        : std::string("<unknown expression>");
+    return File + "(" + std::to_string(Line) + "," + std::to_string(Column) +
+        "): error: Arithmetic expression '" + Expression + "' cannot be used " + inContext;
+}
+
 std::string BuildGeneratedValueAtomReference(const HTNCompilerIR& inBuilder,
                                              const uint32 inValueIndex,
-                                             const std::string& inDomainSymbol)
+                                             const std::string& inDomainSymbol,
+                                             const std::string& inContext = "in this generated value context")
 {
     if (inValueIndex >= inBuilder.Values.size())
     {
@@ -905,6 +600,11 @@ std::string BuildGeneratedValueAtomReference(const HTNCompilerIR& inBuilder,
     }
 
     const ValueRecord& Value = inBuilder.Values[inValueIndex];
+    if (Value.Kind == HTNIRValueKind::Arithmetic)
+    {
+        inBuilder.SetError(FormatGeneratedArithmeticError(inBuilder, Value, inContext));
+        return "NULL";
+    }
     if (Value.Kind == HTNIRValueKind::Variable)
     {
         // Any-argument variables intentionally have no generated variable slot. In atom
@@ -932,7 +632,8 @@ std::string EmitGeneratedArithmeticValue(CodeWriter& W,
                                          const std::string& inDomainSymbol,
                                          const std::string& inBaseName,
                                          const std::string& inIndent,
-                                         uint32& ioTemporary)
+                                         uint32& ioTemporary,
+                                         const std::string& inContext = "in this generated value context")
 {
     if (inValue.Kind == HTNIRValueKind::Variable)
     {
@@ -959,14 +660,18 @@ std::string EmitGeneratedArithmeticValue(CodeWriter& W,
         return "&" + Name;
     }
     if (inValue.ArithmeticExpression >= B.ArithmeticExpressions.size())
+    {
+        B.SetError(FormatGeneratedArithmeticError(B, inValue, inContext));
         return "NULL";
+    }
 
     const HTNIRArithmeticExpression& Expression = B.ArithmeticExpressions[inValue.ArithmeticExpression];
     const std::string Name = inBaseName + "_expression_" + std::to_string(ioTemporary++);
     std::vector<std::string> Operands;
     Operands.reserve(Expression.Operands.size());
     for (const ValueRecord& Operand : Expression.Operands)
-        Operands.push_back(EmitGeneratedArithmeticValue(W, B, Operand, inDomainSymbol, inBaseName, inIndent, ioTemporary));
+        Operands.push_back(EmitGeneratedArithmeticValue(
+            W, B, Operand, inDomainSymbol, inBaseName, inIndent, ioTemporary, inContext));
     W.Out << inIndent << "const HTNAtom* " << Name << "_operands[" << std::max<size_t>(1u, Operands.size()) << "u] = {";
     for (size_t I = 0; I < Operands.size(); ++I)
         W.Out << (I == 0u ? "" : ", ") << Operands[I];
@@ -1021,7 +726,8 @@ void EmitGeneratedAxiomBegin(CodeWriter& W,
                              const HTNCompilerIR& B,
                              const ConditionRecord& inCondition,
                              const uint32 inConditionIndex,
-                             const std::string& inDomainSymbol)
+                             const std::string& inDomainSymbol,
+                             const std::string& inScopeName)
 {
     if (inCondition.ResolvedIndex == kNoIndex || inCondition.ResolvedIndex >= B.Axioms.size())
     {
@@ -1031,11 +737,15 @@ void EmitGeneratedAxiomBegin(CodeWriter& W,
 
     const uint32 SavedValueCapacity = CountGeneratedAxiomScopeSlots(B.Axioms[inCondition.ResolvedIndex]);
     const uint32 StorageCapacity = std::max<uint32>(SavedValueCapacity, 1u);
-    const std::string ScopeName = GetGeneratedAxiomScopeName(inConditionIndex);
+    const std::string& ScopeName = inScopeName;
     W.Out << "    HTNAtom " << ScopeName << "_values[" << StorageCapacity << "u];\n";
     W.Out << "    uint8_t " << ScopeName << "_bound[" << StorageCapacity << "u];\n";
+    const uint32 ArgumentCapacity = std::max<uint32>(inCondition.ArgumentCount, 1u);
+    W.Out << "    HTNAtom " << ScopeName << "_arguments[" << ArgumentCapacity << "u];\n";
+    W.Out << "    uint8_t " << ScopeName << "_argument_bound[" << ArgumentCapacity << "u] = {0};\n";
     W.Out << "    " << inDomainSymbol << "_AXIOM_SCOPE " << ScopeName << " = { "
-          << ScopeName << "_values, " << ScopeName << "_bound, 0u };\n";
+          << ScopeName << "_values, " << ScopeName << "_bound, "
+          << ScopeName << "_arguments, " << ScopeName << "_argument_bound, 0u };\n";
     W.Out << "    " << GetGeneratedAxiomBeginHelperName(inDomainSymbol, inConditionIndex)
           << "(context, &" << ScopeName << ");\n";
 }
@@ -1047,12 +757,13 @@ void EmitGeneratedAxiomEndCall(CodeWriter& W,
                                const std::string& inDomainSymbol,
                                const std::string& inSucceededExpression,
                                const std::string& inPrefix,
-                               const std::string& inSuffix)
+                               const std::string& inSuffix,
+                               const std::string& inScopeName)
 {
     (void)B;
     (void)inCondition;
     W.Out << inPrefix << GetGeneratedAxiomEndHelperName(inDomainSymbol, inConditionIndex)
-          << "(context, " << inSucceededExpression << ", &" << GetGeneratedAxiomScopeName(inConditionIndex)
+          << "(context, " << inSucceededExpression << ", &" << inScopeName
           << ")" << inSuffix;
 }
 
@@ -1179,152 +890,10 @@ void EmitDirectDeterministicFact(CodeWriter& W, const HTNCompilerIR& B, uint32 i
                                  uint32 inSuccess, uint32 inFailure,
                                  const std::string& inDomainSymbol);
 
-void EmitAxiomFactChoiceSequence(CodeWriter& W, const HTNCompilerIR& B,
-                                 const std::vector<uint32>& inFacts,
-                                 const uint32 inFactOffset,
-                                 const BoundVariableSet& inBound,
-                                 const uint32 inFailure,
-                                 const uint32 inRetryAfterSolution,
-                                 const std::vector<GeneratedCheckpointPlan>& inActiveChoiceCheckpoints,
-                                 const uint32 inAxiomCondition,
-                                 const uint32 inAxiomBodyCondition,
-                                 const std::string& inDomainSymbol)
-{
-    if (inFactOffset >= inFacts.size())
-    {
-        W.Out << "    if (solution_index++ == target_solution) {\n";
-        if (!inActiveChoiceCheckpoints.empty())
-            W.Out << "        HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        for (auto It = inActiveChoiceCheckpoints.rbegin(); It != inActiveChoiceCheckpoints.rend(); ++It)
-            EmitGeneratedCheckpointCommit(W, *It, "        ");
-        if (!inActiveChoiceCheckpoints.empty())
-            W.Out << "        HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        W.Out << "        HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inAxiomBodyCondition << "u, 1, 0);\n";
-        const ConditionRecord& AxiomCall = B.Conditions[inAxiomCondition];
-        EmitGeneratedAxiomEndCall(W, B, AxiomCall, inAxiomCondition, inDomainSymbol,
-                                  "1",
-                                  "        return ", ";\n");
-        W.Out << "    }\n";
-        W.Out << "    goto " << W.Label(inRetryAfterSolution) << ";\n";
-        return;
-    }
-
-    const uint32 Fact = inFacts[inFactOffset];
-    const ConditionAnalysis FactAnalysis = AnalyzeCondition(B, Fact, inBound);
-    if (FactAnalysis.MayProduceMultipleSolutions)
-    {
-        const uint32 Retry = W.NewLabel();
-        const uint32 Checkpoint = W.NewLabel();
-        const GeneratedCheckpointPlan ChoiceCheckpointPlan =
-            BuildGeneratedFactSuffixCheckpointPlan(B, Checkpoint, inFacts, inFactOffset, inBound);
-        EmitGeneratedCheckpointDeclarations(W, ChoiceCheckpointPlan);
-        W.Out << "    fact_choice_cursor_" << Fact << " = 0u;\n";
-        W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        EmitGeneratedCheckpointPush(W, ChoiceCheckpointPlan);
-        W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        W.Out << W.Label(Retry) << ":\n";
-        if (B.RuntimeBacktrackingSupport == HTNGeneratedRuntimeBacktrackingSupport::Enabled)
-        {
-            W.Out << "    if (fact_choice_cursor_" << Fact << " != 0u && (context->backtracking_mode & HTN_BACKTRACKING_FACTS_AND_AXIOMS) == 0) {\n";
-            W.Out << "        HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            EmitGeneratedCheckpointRollback(W, ChoiceCheckpointPlan, "        ");
-            W.Out << "        HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            W.Out << "        goto " << W.Label(inFailure) << ";\n";
-            W.Out << "    }\n";
-        }
-        W.Out << "    if (fact_choice_cursor_" << Fact << " != 0u) {\n";
-        W.Out << "        HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        EmitGeneratedCheckpointRollback(W, ChoiceCheckpointPlan, "        ");
-        EmitGeneratedCheckpointPush(W, ChoiceCheckpointPlan, "        ");
-        W.Out << "        HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        W.Out << "    }\n";
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_BEGIN_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Fact << "u, 1);\n";
-        W.Out << "    if (!" << GetGeneratedFactChoiceHelperName(inDomainSymbol, Fact) << "(context, fact_choice_cursor_" << Fact << "++)) {\n";
-        W.Out << "        HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Fact << "u, 0, 1);\n";
-        W.Out << "        HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        EmitGeneratedCheckpointRollback(W, ChoiceCheckpointPlan, "        ");
-        W.Out << "        HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        W.Out << "        goto " << W.Label(inFailure) << ";\n";
-        W.Out << "    }\n";
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Fact << "u, 1, 1);\n";
-        std::vector<GeneratedCheckpointPlan> ActiveChoiceCheckpoints = inActiveChoiceCheckpoints;
-        ActiveChoiceCheckpoints.push_back(ChoiceCheckpointPlan);
-        EmitAxiomFactChoiceSequence(W, B, inFacts, inFactOffset + 1u,
-                                    FactAnalysis.BoundAfter, Retry, Retry,
-                                    ActiveChoiceCheckpoints, inAxiomCondition, inAxiomBodyCondition, inDomainSymbol);
-        return;
-    }
-
-    const uint32 FactSucceeded = W.NewLabel();
-    EmitDirectDeterministicFact(W, B, Fact, inBound, FactSucceeded, inFailure, inDomainSymbol);
-    W.Out << W.Label(FactSucceeded) << ":\n";
-    EmitAxiomFactChoiceSequence(W, B, inFacts, inFactOffset + 1u,
-                                FactAnalysis.BoundAfter, inFailure, inRetryAfterSolution,
-                                inActiveChoiceCheckpoints, inAxiomCondition, inAxiomBodyCondition, inDomainSymbol);
-}
-
-void EmitGeneratedAxiomChoiceHelper(CodeWriter& W, const HTNCompilerIR& B,
-                                    const uint32 inConditionIndex,
-                                    const std::string& inDomainSymbol)
-{
-    const ConditionRecord& Condition = B.Conditions[inConditionIndex];
-    const AxiomRecord* Axiom = FindAxiomRecord(B, Condition.Id);
-    if (!Axiom || !IsGeneratedAxiomChoiceSupported(B, inConditionIndex)) { B.SetError("Multi-solution axiom cannot yet be lowered without a generic condition evaluator at condition " + std::to_string(inConditionIndex)); return; }
-
-    const ConditionRecord& Body = B.Conditions[Axiom->Condition];
-    std::vector<uint32> Facts;
-    if (Body.Kind == HTN_CONDITION_FACT)
-        Facts.emplace_back(Axiom->Condition);
-    else
-    {
-        Facts.reserve(Body.ChildCount);
-        for (uint32 I = 0; I < Body.ChildCount; ++I)
-            Facts.emplace_back(B.ConditionChildRefs[Body.FirstChildRef + I]);
-    }
-
-    BoundVariableSet AxiomBound;
-    for (uint32 I = 0; I < Axiom->ParameterCount; ++I)
-    {
-        const ValueRecord& Parameter = B.Values[Axiom->FirstParameter + I];
-        if (Parameter.Kind != HTNIRValueKind::Variable || Parameter.Text >= B.Strings.Values.size())
-            continue;
-        const std::string& Name = B.Strings.Values[Parameter.Text];
-        if (Name.rfind("out_", 0) != 0)
-            AxiomBound.insert(Parameter.Text);
-    }
-
-    const uint32 Failure = W.NewLabel();
-    W.Out << "static int " << GetGeneratedAxiomChoiceHelperName(inDomainSymbol, inConditionIndex)
-          << "(const HTNGeneratedPlannerContext* context, uint32_t target_solution)\n{\n";
-    W.Out << "    uint32_t solution_index = 0u;\n";
-    for (const uint32 Fact : Facts)
-    {
-        const ConditionRecord& FactCondition = B.Conditions[Fact];
-        bool HasVariable = false;
-        for (uint32 I = 0; I < FactCondition.ArgumentCount; ++I)
-        {
-            const uint32 ValueIndex = FactCondition.FirstArgument + I;
-            if (ValueIndex < B.Values.size() && B.Values[ValueIndex].Kind == HTNIRValueKind::Variable) { HasVariable = true; break; }
-        }
-        if (HasVariable)
-        {
-            W.Out << "    uint32_t fact_choice_cursor_" << Fact << " = 0u;\n";
-            W.Out << "    (void)fact_choice_cursor_" << Fact << ";\n";
-        }
-    }
-    W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-    EmitGeneratedAxiomBegin(W, B, Condition, inConditionIndex, inDomainSymbol);
-    W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-    W.Out << "    HTN_GENERATED_EVENT_DEBUG_BEGIN_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Axiom->Condition << "u, 0);\n";
-    EmitAxiomFactChoiceSequence(W, B, Facts, 0u, AxiomBound, Failure, Failure, {},
-                                inConditionIndex, Axiom->Condition, inDomainSymbol);
-    W.Out << W.Label(Failure) << ":\n";
-    W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Axiom->Condition << "u, 0, 0);\n";
-    W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-    EmitGeneratedAxiomEndCall(W, B, Condition, inConditionIndex, inDomainSymbol, "0", "    (void)", ";\n");
-    W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-    W.Out << "    return 0;\n}\n\n";
-}
+void EmitLoweredCondition(CodeWriter& W, const HTNCompilerIR& B, uint32 inCondition,
+                          const BoundVariableSet& inBound,
+                          uint32 inSuccess, uint32 inFailure,
+                          const std::string& inDomainSymbol);
 
 void EmitDirectDeterministicFact(CodeWriter& W, const HTNCompilerIR& B, const uint32 inCondition,
                                  const BoundVariableSet& inBound,
@@ -1408,6 +977,17 @@ void EmitDirectDeterministicFact(CodeWriter& W, const HTNCompilerIR& B, const ui
     W.Out << "        if (fact_matched) goto " << W.Label(inSuccess) << ";\n";
     W.Out << "        goto " << W.Label(inFailure) << ";\n";
     W.Out << "    }\n";
+}
+
+void EmitGeneratedCallTermSource(CodeWriter& W, const HTNCompilerIR& B,
+                                 const HTNIRSourceLocation& inSource, const std::string& inName)
+{
+    W.Out << "    const HTNCallTermSource " << inName << " = {\"" << EscapeCString(B.DomainId) << "\", ";
+    if (inSource.FileIndex < B.SourceFiles.size())
+        W.Out << "\"" << EscapeCString(B.SourceFiles[inSource.FileIndex]) << "\"";
+    else
+        W.Out << "NULL";
+    W.Out << ", " << inSource.Range.Begin.Line << "u, " << inSource.Range.Begin.Column << "u};\n";
 }
 
 void EmitGeneratedConditionLeaf(CodeWriter& W, const HTNCompilerIR& B, const uint32 inCondition,
@@ -1579,8 +1159,9 @@ void EmitGeneratedConditionLeaf(CodeWriter& W, const HTNCompilerIR& B, const uin
         W.Out << "        HTNAtom call_result;\n";
         W.Out << "        HTNAtom_Init(&call_result);\n";
         W.Out << "        HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CALLTERM);\n";
-        W.Out << "        const int call_has_result = HTNCallTermRegistry_InvokeGeneratedCallTerm(context->callterm_binding_context, &HTN_GENERATED_EXECUTION(context)->callterm_slots["
-              << Condition.ResolvedIndex << "u], " << Args << ", " << Condition.ArgumentCount << "u, &call_result);\n";
+        EmitGeneratedCallTermSource(W, B, Condition.Source, "call_source");
+        W.Out << "        const int call_has_result = HTNCallTermRegistry_InvokeGeneratedCallTermWithSource(context, &HTN_GENERATED_EXECUTION(context)->callterm_slots["
+              << Condition.ResolvedIndex << "u], " << Args << ", " << Condition.ArgumentCount << "u, &call_result, &call_source);\n";
         W.Out << "        HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CALLTERM);\n";
         W.Out << "        { const uint64_t fact_storage_generation = HTNWorldState_GetFactStorageGeneration(context->world_state);\n";
         W.Out << "          if (HTN_GENERATED_EXECUTION(context)->fact_storage_generation != fact_storage_generation) {\n";
@@ -1609,8 +1190,9 @@ void EmitGeneratedConditionLeaf(CodeWriter& W, const HTNCompilerIR& B, const uin
         W.Out << "            HTNAtom call_result;\n";
         W.Out << "            HTNAtom_Init(&call_result);\n";
         W.Out << "            HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CALLTERM);\n";
-        W.Out << "            condition_result = HTNCallTermRegistry_InvokeGeneratedCallTerm(context->callterm_binding_context, &HTN_GENERATED_EXECUTION(context)->callterm_slots["
-              << Condition.ResolvedIndex << "u], " << Args << ", " << Condition.ArgumentCount << "u, &call_result);\n";
+        EmitGeneratedCallTermSource(W, B, Condition.Source, "call_source");
+        W.Out << "            condition_result = HTNCallTermRegistry_InvokeGeneratedCallTermWithSource(context, &HTN_GENERATED_EXECUTION(context)->callterm_slots["
+              << Condition.ResolvedIndex << "u], " << Args << ", " << Condition.ArgumentCount << "u, &call_result, &call_source);\n";
         W.Out << "            HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CALLTERM);\n";
         W.Out << "            { const uint64_t fact_storage_generation = HTNWorldState_GetFactStorageGeneration(context->world_state);\n";
         W.Out << "              if (HTN_GENERATED_EXECUTION(context)->fact_storage_generation != fact_storage_generation) {\n";
@@ -1641,354 +1223,7 @@ void EmitGeneratedConditionLeaf(CodeWriter& W, const HTNCompilerIR& B, const uin
     W.Out << "    }\n";
 }
 
-void EmitLoweredCondition(CodeWriter& W, const HTNCompilerIR& B, const uint32 inCondition,
-                          const BoundVariableSet& inBound,
-                          const uint32 inSuccess, const uint32 inFailure,
-                          const std::string& inDomainSymbol);
-
-void EmitLoweredAndSequence(CodeWriter& W, const HTNCompilerIR& B, const ConditionRecord& inAndCondition,
-                           const uint32 inChildOffset, const BoundVariableSet& inBound,
-                           const uint32 inSuccess, const uint32 inFailure,
-                           const std::string& inDomainSymbol)
-{
-    if (inChildOffset >= inAndCondition.ChildCount)
-    {
-        W.Out << "    goto " << W.Label(inSuccess) << ";\n";
-        return;
-    }
-
-    const uint32 Ref = inAndCondition.FirstChildRef + inChildOffset;
-    if (Ref >= B.ConditionChildRefs.size())
-    {
-        W.Out << "    goto " << W.Label(inFailure) << ";\n";
-        return;
-    }
-
-    const uint32 Child = B.ConditionChildRefs[Ref];
-    const ConditionAnalysis ChildAnalysis = AnalyzeCondition(B, Child, inBound);
-
-    if (ChildAnalysis.MayProduceMultipleSolutions)
-    {
-        const uint32 Retry = W.NewLabel();
-        const uint32 Continue = W.NewLabel();
-        const uint32 ChildSucceeded = W.NewLabel();
-        const uint32 Checkpoint = W.NewLabel();
-
-        W.DomainExpressionComment(B.Conditions[Child].DomainExpression);
-        const bool IsFactChoice = Child < B.Conditions.size() && B.Conditions[Child].Kind == HTN_CONDITION_FACT;
-        const bool IsAxiomChoice = Child < B.Conditions.size() && B.Conditions[Child].Kind == HTN_CONDITION_AXIOM;
-        GeneratedCheckpointPlan ChoiceCheckpointPlan;
-        if (IsFactChoice)
-        {
-            ChoiceCheckpointPlan = BuildGeneratedAndSuffixCheckpointPlan(B, Checkpoint, inAndCondition, inChildOffset, inBound);
-            EmitGeneratedCheckpointDeclarations(W, ChoiceCheckpointPlan);
-            W.Out << "    fact_choice_cursor_" << Child << " = 0u;\n";
-            W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            EmitGeneratedCheckpointPush(W, ChoiceCheckpointPlan);
-            W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        }
-        else if (IsAxiomChoice)
-        {
-            if (!IsGeneratedAxiomChoiceSupported(B, Child))
-            {
-                B.SetError("Multi-solution axiom cannot be lowered without a generic condition evaluator at condition " + std::to_string(Child));
-                return;
-            }
-            W.Out << "    axiom_choice_cursor_" << Child << " = 0u;\n";
-        }
-        else
-        {
-            B.SetError("Choice-producing condition cannot yet be lowered without a generic condition evaluator at condition " + std::to_string(Child)); return;
-        }
-        W.Out << "    goto " << W.Label(Retry) << ";\n";
-        W.Out << W.Label(Retry) << ":\n";
-        if (IsFactChoice)
-        {
-            if (B.RuntimeBacktrackingSupport == HTNGeneratedRuntimeBacktrackingSupport::Enabled)
-            {
-                W.Out << "    if (fact_choice_cursor_" << Child << " != 0u && (context->backtracking_mode & HTN_BACKTRACKING_FACTS_AND_AXIOMS) == 0) {\n";
-                W.Out << "        HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-                EmitGeneratedCheckpointRollback(W, ChoiceCheckpointPlan, "        ");
-                W.Out << "        HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-                W.Out << "        goto " << W.Label(inFailure) << ";\n";
-                W.Out << "    }\n";
-            }
-            W.Out << "    if (fact_choice_cursor_" << Child << " != 0u) {\n";
-            W.Out << "        HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            EmitGeneratedCheckpointRollback(W, ChoiceCheckpointPlan, "        ");
-            EmitGeneratedCheckpointPush(W, ChoiceCheckpointPlan, "        ");
-            W.Out << "        HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            W.Out << "    }\n";
-            W.Out << "    HTN_GENERATED_EVENT_DEBUG_BEGIN_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Child << "u, 1);\n";
-            W.Out << "    if (!" << GetGeneratedFactChoiceHelperName(inDomainSymbol, Child) << "(context, fact_choice_cursor_" << Child << "++)) {\n";
-            W.Out << "        HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Child << "u, 0, 1);\n";
-            W.Out << "        HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            EmitGeneratedCheckpointRollback(W, ChoiceCheckpointPlan, "        ");
-            W.Out << "        HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            W.Out << "        goto " << W.Label(inFailure) << ";\n";
-            W.Out << "    }\n";
-            W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Child << "u, 1, 1);\n";
-        }
-        else
-        {
-            if (B.RuntimeBacktrackingSupport == HTNGeneratedRuntimeBacktrackingSupport::Enabled)
-                W.Out << "    if (axiom_choice_cursor_" << Child << " != 0u && (context->backtracking_mode & HTN_BACKTRACKING_FACTS_AND_AXIOMS) == 0) goto " << W.Label(inFailure) << ";\n";
-            // The axiom call itself is not the visual choice point. Its generator
-            // facts inside the axiom body are.
-            // Keeping the axiom regular prevents it from filtering older decomposition
-            // steps from its children when the latest alternative is expanded.
-            W.Out << "    HTN_GENERATED_EVENT_DEBUG_BEGIN_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Child << "u, 0);\n";
-            W.Out << "    if (!" << GetGeneratedAxiomChoiceHelperName(inDomainSymbol, Child) << "(context, axiom_choice_cursor_" << Child << "++)) { "
-                  << "HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Child << "u, 0, 0); goto " << W.Label(inFailure) << "; }\n";
-            W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << Child << "u, 1, 0);\n";
-        }
-        W.Out << "    goto " << W.Label(Continue) << ";\n";
-        W.Out << W.Label(Continue) << ":\n";
-
-        EmitLoweredAndSequence(W, B, inAndCondition, inChildOffset + 1u,
-            ChildAnalysis.BoundAfter, ChildSucceeded, Retry, inDomainSymbol);
-
-        W.Out << W.Label(ChildSucceeded) << ":\n";
-        if (IsFactChoice)
-        {
-            W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            EmitGeneratedCheckpointCommit(W, ChoiceCheckpointPlan);
-            W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        }
-        W.Out << "    goto " << W.Label(inSuccess) << ";\n";
-        return;
-    }
-
-    const uint32 ChildSuccess = W.NewLabel();
-    EmitLoweredCondition(W, B, Child, inBound, ChildSuccess, inFailure, inDomainSymbol);
-    W.Out << W.Label(ChildSuccess) << ":\n";
-    EmitLoweredAndSequence(W, B, inAndCondition, inChildOffset + 1u,
-        ChildAnalysis.BoundAfter, inSuccess, inFailure, inDomainSymbol);
-}
-
-void EmitLoweredCondition(CodeWriter& W, const HTNCompilerIR& B, const uint32 inCondition,
-                          const BoundVariableSet& inBound,
-                          const uint32 inSuccess, const uint32 inFailure,
-                          const std::string& inDomainSymbol)
-{
-    if (inCondition == kNoIndex)
-    {
-        W.Out << "    goto " << W.Label(inSuccess) << ";\n";
-        return;
-    }
-
-    const ConditionRecord& C = B.Conditions[inCondition];
-    const ConditionAnalysis Analysis = AnalyzeCondition(B, inCondition, inBound);
-
-    // Multi-solution axioms are also generated. The helper replays the axiom
-    // body from its local frame and returns the requested solution ordinal;
-    // enclosing generated ANDs increment the ordinal when they backtrack.
-    if (C.Kind == HTN_CONDITION_AXIOM && Analysis.MayProduceMultipleSolutions)
-    {
-        if (!IsGeneratedAxiomChoiceSupported(B, inCondition))
-        {
-            B.SetError("Multi-solution axiom cannot be lowered without a generic condition evaluator at condition " + std::to_string(inCondition));
-            return;
-        }
-        W.DomainExpressionComment(C.DomainExpression);
-        // The generator inside the axiom is the choice point. Keep the axiom
-        // condition node regular so its
-        // descendants can expose every backtracking step independently.
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_BEGIN_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 0);\n";
-        W.Out << "    if (!" << GetGeneratedAxiomChoiceHelperName(inDomainSymbol, inCondition) << "(context, 0u)) {\n";
-        W.Out << "        HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 0, 0);\n";
-        W.Out << "        goto " << W.Label(inFailure) << ";\n";
-        W.Out << "    }\n";
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 1, 0);\n";
-        W.Out << "    goto " << W.Label(inSuccess) << ";\n";
-        return;
-    }
-
-    // Deterministic axioms are expanded into their generated body while the
-    // Generated execution only manages the axiom-local variable frame and out/io propagation.
-    if (C.Kind == HTN_CONDITION_AXIOM && Analysis.CanLowerToCFG)
-    {
-        const AxiomRecord* Axiom = FindAxiomRecord(B, C.Id);
-        if (!Axiom)
-        {
-            EmitGeneratedConditionLeaf(W, B, inCondition, inBound, inSuccess, inFailure, inDomainSymbol);
-            return;
-        }
-
-        BoundVariableSet AxiomBound;
-        for (uint32 I = 0; I < Axiom->ParameterCount; ++I)
-        {
-            const ValueRecord& Parameter = B.Values[Axiom->FirstParameter + I];
-            if (Parameter.Kind != HTNIRValueKind::Variable || Parameter.Text >= B.Strings.Values.size())
-                continue;
-            const std::string& Name = B.Strings.Values[Parameter.Text];
-            if (Name.rfind("out_", 0) != 0)
-                AxiomBound.insert(Parameter.Text);
-        }
-
-        const uint32 BodySuccess = W.NewLabel();
-        const uint32 BodyFailure = W.NewLabel();
-        const uint32 PropagationFailure = W.NewLabel();
-        W.DomainExpressionComment(C.DomainExpression);
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_BEGIN_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 0);\n";
-        W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-        EmitGeneratedAxiomBegin(W, B, C, inCondition, inDomainSymbol);
-        W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-        EmitLoweredCondition(W, B, Axiom->Condition, AxiomBound, BodySuccess, BodyFailure, inDomainSymbol);
-        W.Out << W.Label(BodyFailure) << ":\n";
-        W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-        EmitGeneratedAxiomEndCall(W, B, C, inCondition, inDomainSymbol, "0", "    (void)", ";\n");
-        W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 0, 0);\n";
-        W.Out << "    goto " << W.Label(inFailure) << ";\n";
-        W.Out << W.Label(BodySuccess) << ":\n";
-        W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-        EmitGeneratedAxiomEndCall(W, B, C, inCondition, inDomainSymbol,
-                                  "1",
-                                  "    if (!", ") {\n");
-        W.Out << "        HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-        W.Out << "        goto " << W.Label(PropagationFailure) << ";\n";
-        W.Out << "    }\n";
-        W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_AXIOM_CONTROL);\n";
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 1, 0);\n";
-        W.Out << "    goto " << W.Label(inSuccess) << ";\n";
-        W.Out << W.Label(PropagationFailure) << ":\n";
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 0, 0);\n";
-        W.Out << "    goto " << W.Label(inFailure) << ";\n";
-        return;
-    }
-
-    // Facts and callterms are the only remaining generated leaves. Every logical
-    // composite and axiom must have been lowered to generated control flow.
-    if (C.Kind == HTN_CONDITION_FACT || C.Kind == HTN_CONDITION_CALL || C.Kind == HTN_CONDITION_CALL_BIND ||
-        C.Kind == HTN_CONDITION_BUILTIN_COMPARISON || C.Kind == HTN_CONDITION_BUILTIN_LIST_SPLIT)
-    {
-        EmitGeneratedConditionLeaf(W, B, inCondition, inBound, inSuccess, inFailure, inDomainSymbol);
-        return;
-    }
-    if (!Analysis.CanLowerToCFG)
-    {
-        B.SetError("Condition cannot be lowered to generated CFG without a generic condition evaluator: " + std::to_string(inCondition));
-        return;
-    }
-
-    W.Out << "    HTN_GENERATED_EVENT_DEBUG_BEGIN_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 0);\n";
-
-    if (C.Kind == HTN_CONDITION_AND) // AND
-    {
-        const uint32 LocalSuccess = W.NewLabel();
-        const uint32 LocalFailure = W.NewLabel();
-        const uint32 Checkpoint = Analysis.MayBindVariables ? W.NewLabel() : 0u;
-        GeneratedCheckpointPlan CheckpointPlan;
-        if (Analysis.MayBindVariables)
-        {
-            CheckpointPlan = BuildGeneratedConditionCheckpointPlan(B, Checkpoint, inCondition, inBound);
-            EmitGeneratedCheckpointDeclarations(W, CheckpointPlan);
-            W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            EmitGeneratedCheckpointPush(W, CheckpointPlan);
-            W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        }
-
-        EmitLoweredAndSequence(W, B, C, 0u, inBound, LocalSuccess, LocalFailure,
-            inDomainSymbol);
-
-        W.Out << W.Label(LocalFailure) << ":\n";
-        if (Analysis.MayBindVariables)
-        {
-            W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            EmitGeneratedCheckpointRollback(W, CheckpointPlan);
-            W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        }
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 0, 0);\n";
-        W.Out << "    goto " << W.Label(inFailure) << ";\n";
-
-        W.Out << W.Label(LocalSuccess) << ":\n";
-        if (Analysis.MayBindVariables)
-        {
-            W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-            EmitGeneratedCheckpointCommit(W, CheckpointPlan);
-            W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        }
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 1, 0);\n";
-        W.Out << "    goto " << W.Label(inSuccess) << ";\n";
-        return;
-    }
-
-    if (C.Kind == HTN_CONDITION_OR || C.Kind == HTN_CONDITION_ALT) // OR / pure-no-bind ALT
-    {
-        const uint32 LocalSuccess = W.NewLabel();
-        const uint32 LocalFailure = W.NewLabel();
-        for (uint32 I = 0; I < C.ChildCount; ++I)
-        {
-            const uint32 Ref = C.FirstChildRef + I;
-            const uint32 Child = B.ConditionChildRefs[Ref];
-            const uint32 ChildSuccess = W.NewLabel();
-            const uint32 ChildFailure = (I + 1u == C.ChildCount) ? LocalFailure : W.NewLabel();
-
-            // Give every alternative its own success bridge. This is deliberately
-            // explicit rather than targeting LocalSuccess directly: nested generated
-            // axioms emit their own local labels while unwinding the axiom frame, and
-            // the bridge guarantees that a successful alternative leaves the OR/ALT
-            // immediately instead of ever falling through into the next alternative.
-            EmitLoweredCondition(W, B, Child, inBound, ChildSuccess, ChildFailure, inDomainSymbol);
-            W.Out << W.Label(ChildSuccess) << ":\n";
-            W.Out << "    goto " << W.Label(LocalSuccess) << ";\n";
-            if (I + 1u != C.ChildCount)
-                W.Out << W.Label(ChildFailure) << ":\n";
-        }
-        if (C.ChildCount == 0u)
-            W.Out << "    goto " << W.Label(LocalFailure) << ";\n";
-        W.Out << W.Label(LocalFailure) << ":\n";
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 0, 0);\n";
-        W.Out << "    goto " << W.Label(inFailure) << ";\n";
-        W.Out << W.Label(LocalSuccess) << ":\n";
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 1, 0);\n";
-        W.Out << "    goto " << W.Label(inSuccess) << ";\n";
-        return;
-    }
-
-    if (C.Kind == HTN_CONDITION_NOT) // NOT
-    {
-        const uint32 ChildSuccess = W.NewLabel();
-        const uint32 ChildFailure = W.NewLabel();
-        const uint32 LocalSuccess = W.NewLabel();
-        const uint32 LocalFailure = W.NewLabel();
-        const uint32 Checkpoint = W.NewLabel();
-        const GeneratedCheckpointPlan CheckpointPlan = BuildGeneratedConditionCheckpointPlan(B, Checkpoint, inCondition, inBound);
-        EmitGeneratedCheckpointDeclarations(W, CheckpointPlan);
-        W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        EmitGeneratedCheckpointPush(W, CheckpointPlan);
-        W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        if (C.ChildCount == 0u)
-            W.Out << "    goto " << W.Label(ChildFailure) << ";\n";
-        else
-        {
-            const uint32 Child = B.ConditionChildRefs[C.FirstChildRef];
-            EmitLoweredCondition(W, B, Child, inBound, ChildSuccess, ChildFailure, inDomainSymbol);
-        }
-        W.Out << W.Label(ChildSuccess) << ":\n";
-        W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        EmitGeneratedCheckpointRollback(W, CheckpointPlan);
-
-        W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        W.Out << "    goto " << W.Label(LocalFailure) << ";\n";
-        W.Out << W.Label(ChildFailure) << ":\n";
-        W.Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        EmitGeneratedCheckpointRollback(W, CheckpointPlan);
-
-        W.Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
-        W.Out << "    goto " << W.Label(LocalSuccess) << ";\n";
-        W.Out << W.Label(LocalFailure) << ":\n";
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 0, 0);\n";
-        W.Out << "    goto " << W.Label(inFailure) << ";\n";
-        W.Out << W.Label(LocalSuccess) << ":\n";
-        W.Out << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol << "_PLANNER_DEFINITION, " << inCondition << "u, 1, 0);\n";
-        W.Out << "    goto " << W.Label(inSuccess) << ";\n";
-        return;
-    }
-
-    EmitGeneratedConditionLeaf(W, B, inCondition, inBound, inSuccess, inFailure, inDomainSymbol);
-}
+#include "Translator/HTNConditionContinuation.inl"
 
 void EmitCondition(CodeWriter& W, const HTNCompilerIR& B, uint32 inCondition, uint32 inSuccess, uint32 inFailure,
                    const BoundVariableSet& inInitiallyBound,
@@ -2018,6 +1253,20 @@ void WriteArray(std::ostringstream& out, const char* type, const std::string& na
     out << "};\n\n";
 }
 
+bool NeedsGeneratedArithmeticHelper(const HTNCompilerIR& inBuilder)
+{
+    if (std::any_of(inBuilder.Values.begin(), inBuilder.Values.end(),
+        [](const ValueRecord& Value) { return Value.Kind == HTNIRValueKind::Arithmetic; }))
+        return true;
+
+    for (const auto& TaskCalls : inBuilder.TaskCallExpressions)
+        for (const TaskCallExpressionRecord& Call : TaskCalls)
+            if (std::any_of(Call.Arguments.begin(), Call.Arguments.end(),
+                [](const ValueRecord& Value) { return Value.Kind == HTNIRValueKind::Arithmetic; }))
+                return true;
+    return false;
+}
+
 std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const std::string& EntryPointName,
                        const std::string& SourceFile, const std::vector<std::string>& LinkedSourceFiles,
                        const HTNGeneratedBacktrackingPolicy inBacktrackingPolicy,
@@ -2027,6 +1276,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     CodeWriter W;
     auto& Out = W.Out;
     const std::string DomainSymbol = Prefix + "_DOMAIN";
+    const bool NeedsArithmeticHelper = NeedsGeneratedArithmeticHelper(B);
     Out << "/* Generated by HTNTranslator. Do not edit. */\n";
     Out << "/* Source domain: " << EscapeCString(SourceFile) << " */\n";
     if (LinkedSourceFiles.size() > 1u)
@@ -2067,6 +1317,8 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     // the emitted method/branch functions run. Those functions can therefore
     // refresh the slots, so the prepare helper needs a declaration before them.
     Out << "static int " << DomainSymbol << "_PREPARE_FACTS(const void** fact_slots, HTNWorldState* world_state, const void* prepared_storage);\n\n";
+    if (NeedsArithmeticHelper)
+        Out << "static int " << DomainSymbol << "_EVALUATE_ARITHMETIC(const HTNAtom* const* operands, uint32_t count, uint32_t op, HTNAtom* result);\n\n";
 
     Out << "#ifdef HTN_DEBUG_DECOMPOSITION\n";
     const size_t DebugStringCount = B.Strings.Values.empty() ? 1u : B.Strings.Values.size();
@@ -2385,7 +1637,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
         const TaskRecord& Task = B.Tasks[inTaskIndex];
         if (Task.Kind == HTN_TASK_COMPOUND)
         {
-            const int TargetMethodIndex = B.FindMethodByStringId(Task.Id);
+            const int TargetMethodIndex = B.FindMethodByStringId(Task.Id, Task.ArgumentCount);
             if (TargetMethodIndex >= 0)
             {
                 const MethodRecord& TargetMethod = B.Methods[static_cast<size_t>(TargetMethodIndex)];
@@ -2483,6 +1735,8 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     Out << "typedef struct " << DomainSymbol << "_AXIOM_SCOPE\n{\n";
     Out << "    HTNAtom* saved_values;\n";
     Out << "    uint8_t* saved_bound;\n";
+    Out << "    HTNAtom* argument_values;\n";
+    Out << "    uint8_t* argument_bound;\n";
     Out << "    uint64_t caller_frame_id;\n";
     Out << "} " << DomainSymbol << "_AXIOM_SCOPE;\n\n";
 
@@ -2603,19 +1857,39 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
 
         Out << "static void " << GetGeneratedAxiomBeginHelperName(DomainSymbol, ConditionIndex)
             << "(const HTNGeneratedPlannerContext* context, " << DomainSymbol << "_AXIOM_SCOPE* axiom_scope)\n{\n";
+        Out << "    HTNAtom_InitRange(axiom_scope->argument_values, " << Condition.ArgumentCount << "u);\n";
+        for (uint32 I = 0u; I < Condition.ArgumentCount; ++I)
+            Out << "    axiom_scope->argument_bound[" << I << "u] = 0u;\n";
 
         std::vector<uint32> CopiedInputs;
+        uint32 ArithmeticTemporary = 0u;
         for (uint32 I = 0u; I < Condition.ArgumentCount; ++I)
         {
             const ValueRecord& Parameter = B.Values[Axiom.FirstParameter + I];
-            if (!GeneratedAxiomParameterIsInput(GetGeneratedAxiomParameterDirection(B, Parameter)))
+            const GeneratedAxiomParameterDirection Direction = GetGeneratedAxiomParameterDirection(B, Parameter);
+            const ValueRecord& Caller = B.Values[Condition.FirstArgument + I];
+            const bool PreserveOutputArgument = GeneratedAxiomParameterIsOutput(Direction);
+            if (!GeneratedAxiomParameterIsInput(Direction) && !PreserveOutputArgument)
                 continue;
 
-            const ValueRecord& Caller = B.Values[Condition.FirstArgument + I];
-            Out << "    const HTNAtom* axiom_input_" << I << " = "
-                << BuildGeneratedValueAtomReference(B, Condition.FirstArgument + I, DomainSymbol) << ";\n";
+            const std::string Context = "as argument " + std::to_string(I + 1u) + " of axiom '" +
+                (Condition.Id < B.Strings.Values.size() ? B.Strings.Values[Condition.Id] : std::string("<unknown>")) + "'";
+            const std::string ArgumentReference = Caller.Kind == HTNIRValueKind::Arithmetic
+                ? EmitGeneratedArithmeticValue(W, B, Caller, DomainSymbol,
+                    "axiom_" + std::to_string(ConditionIndex) + "_argument_" + std::to_string(I),
+                    "    ", ArithmeticTemporary, Context)
+                : BuildGeneratedValueAtomReference(B, Condition.FirstArgument + I, DomainSymbol, Context);
+            Out << "    const HTNAtom* axiom_input_" << I << " = " << ArgumentReference << ";\n";
 
-            if (Caller.Kind == HTNIRValueKind::Variable && Caller.VariableSlot != kNoIndex)
+            if (PreserveOutputArgument)
+            {
+                Out << "    if (axiom_input_" << I << ") {\n";
+                Out << "        HTNAtom_Copy(&axiom_scope->argument_values[" << I << "u], axiom_input_" << I << ");\n";
+                Out << "        axiom_scope->argument_bound[" << I << "u] = 1u;\n";
+                Out << "    }\n";
+            }
+
+            if (GeneratedAxiomParameterIsInput(Direction) && Caller.Kind == HTNIRValueKind::Variable && Caller.VariableSlot != kNoIndex)
             {
                 const uint32 Word = Caller.VariableSlot >> 6u;
                 const uint64_t Bit = uint64_t{1} << (Caller.VariableSlot & 63u);
@@ -2690,12 +1964,29 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
             Out << "        const HTNAtom* axiom_output_" << I
                 << " = HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, " << Parameter.VariableSlot << "u);\n";
             Out << "        if (!axiom_output_" << I << " || !HTNAtom_IsBound(axiom_output_" << I << ")) valid = 0;\n";
+            Out << "        else if (axiom_scope->argument_bound[" << I
+                << "u] && !HTNAtom_Equals(axiom_output_" << I
+                << ", &axiom_scope->argument_values[" << I << "u])) valid = 0;\n";
             if (Caller.Kind != HTNIRValueKind::Variable)
-            {
-                Out << "        else if (!HTNAtom_Equals(axiom_output_" << I << ", "
-                    << BuildGeneratedValueAtomReference(B, Condition.FirstArgument + I, DomainSymbol) << ")) valid = 0;\n";
-            }
+                Out << "        else if (!axiom_scope->argument_bound[" << I << "u]) valid = 0;\n";
             Out << "    }\n";
+        }
+
+        for (uint32 I = 0u; I < Condition.ArgumentCount; ++I)
+        {
+            const auto& Caller = B.Values[Condition.FirstArgument + I];
+            const auto& Parameter = B.Values[Axiom.FirstParameter + I];
+            if (Caller.Kind != HTNIRValueKind::Variable || !GeneratedAxiomParameterIsOutput(GetGeneratedAxiomParameterDirection(B, Parameter))) continue;
+            for (uint32 J = 0u; J < I; ++J)
+            {
+                const auto& Other = B.Values[Condition.FirstArgument + J];
+                const auto& OtherParameter = B.Values[Axiom.FirstParameter + J];
+                if (Other.Kind == HTNIRValueKind::Variable && Other.VariableSlot == Caller.VariableSlot &&
+                    GeneratedAxiomParameterIsOutput(GetGeneratedAxiomParameterDirection(B, OtherParameter)))
+                    Out << "    if (valid && !HTNAtom_Equals(HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, "
+                        << Parameter.VariableSlot << "u), HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, "
+                        << OtherParameter.VariableSlot << "u))) valid = 0;\n";
+            }
         }
 
         std::vector<uint32> VariableOutputs;
@@ -2745,6 +2036,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
             }
         }
         Out << "    HTNAtom_DestroyRange(axiom_scope->saved_values, " << AxiomScopeSlotCount << "u);\n";
+        Out << "    HTNAtom_DestroyRange(axiom_scope->argument_values, " << Condition.ArgumentCount << "u);\n";
         Out << "    HTN_GENERATED_EXECUTION(context)->current_variable_frame_id = axiom_scope->caller_frame_id;\n";
 
         if (!VariableOutputs.empty())
@@ -2766,15 +2058,10 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     }
 
     bool NeedsBuiltinComparisonHelper = false;
-    bool NeedsArithmeticHelper = false;
     for (const ConditionRecord& Condition : B.Conditions)
     {
         if (Condition.Kind != HTN_CONDITION_BUILTIN_COMPARISON)
             continue;
-        if (Condition.ArgumentCount == 2u &&
-            (B.Values[Condition.FirstArgument].Kind == HTNIRValueKind::Arithmetic ||
-             B.Values[Condition.FirstArgument + 1u].Kind == HTNIRValueKind::Arithmetic))
-            NeedsArithmeticHelper = true;
         bool StaticResult = false;
         if (!TryEvaluateStaticBuiltinComparison(B, Condition, StaticResult))
             NeedsBuiltinComparisonHelper = true;
@@ -2823,8 +2110,6 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
         Out << "    }\n}\n\n";
     }
 
-    // Multi-solution axiom iterators are generated as ordinary C helpers.
-    // They intentionally live in generated execution storage so no generic
     // Fact choice helpers enumerate matching WorldState rows directly in generated C.
     // Emit one helper for each fact that can bind at least one variable; whether it
     // becomes a choice point at a particular callsite depends on the bound set there.
@@ -2845,17 +2130,6 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
         }
         if (HasVariable)
             EmitGeneratedFactChoiceHelper(W, B, ConditionIndex, DomainSymbol);
-    }
-
-    // Emit helpers only for axiom conditions referenced by compiled domains.
-    for (uint32 ConditionIndex = 0; ConditionIndex < static_cast<uint32>(B.Conditions.size()); ++ConditionIndex)
-    {
-        if (B.Conditions[ConditionIndex].Kind != HTN_CONDITION_AXIOM)
-            continue;
-        const ConditionAnalysis AxiomAnalysis = AnalyzeCondition(B, ConditionIndex, BoundVariableSet{});
-        if (!AxiomAnalysis.MayProduceMultipleSolutions)
-            continue;
-        EmitGeneratedAxiomChoiceHelper(W, B, ConditionIndex, DomainSymbol);
     }
 
     // Task identity and method targets are compile-time properties. Pending work
@@ -2897,7 +2171,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
             const TaskRecord& TailTask = B.Tasks[TailTaskIndex];
             if (TailTask.Kind != HTN_TASK_COMPOUND)
                 continue;
-            const int TargetMethod = B.FindMethodByStringId(TailTask.Id);
+            const int TargetMethod = B.FindMethodByStringId(TailTask.Id, TailTask.ArgumentCount);
             if (TargetMethod == static_cast<int>(MethodIndex))
                 SelfTailMethodByTask[TailTaskIndex] = TargetMethod;
         }
@@ -3108,26 +2382,42 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
                 const std::string ArgumentsArray = "call_arguments_" + std::to_string(C);
                 if (!Call.Arguments.empty())
                 {
-                    Out << "    const HTNAtom* " << ArgumentsArray << "[" << Call.Arguments.size() << "u] = {";
+                    std::vector<std::string> ArgumentReferences;
+                    ArgumentReferences.reserve(Call.Arguments.size());
+                    uint32 ArithmeticTemporary = 0u;
                     for (size_t I = 0u; I < Call.Arguments.size(); ++I)
                     {
-                        if (I > 0u)
-                            Out << ", ";
                         const ValueRecord& Argument = Call.Arguments[I];
-                        if (Argument.Kind == HTNIRValueKind::Variable)
+                        if (Argument.Kind == HTNIRValueKind::Arithmetic)
+                        {
+                            ArgumentReferences.emplace_back(EmitGeneratedArithmeticValue(
+                                W, B, Argument, DomainSymbol,
+                                "task_" + std::to_string(T) + "_call_" + std::to_string(C) +
+                                    "_argument_" + std::to_string(I),
+                                "    ", ArithmeticTemporary,
+                                "as argument " + std::to_string(I + 1u) + " of callterm '" +
+                                    (Call.Id < B.Strings.Values.size() ? B.Strings.Values[Call.Id] : std::string("<unknown>")) + "'"));
+                        }
+                        else if (Argument.Kind == HTNIRValueKind::Variable)
                         {
                             if (Argument.VariableSlot == kNoIndex)
-                                Out << "NULL";
+                                ArgumentReferences.emplace_back("NULL");
                             else
-                                Out << "HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, " << Argument.VariableSlot << "u)";
+                                ArgumentReferences.emplace_back(
+                                    "HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, " +
+                                    std::to_string(Argument.VariableSlot) + "u)");
                         }
                         else
                         {
                             if (Argument.StaticValueIndex == kNoIndex) { B.SetError("Generated task call argument has no prepared-value index"); return {}; }
-                            Out << "&" << DomainSymbol << "_PREPARED(context)->values["
-                                << Argument.StaticValueIndex << "u]";
+                            ArgumentReferences.emplace_back(
+                                "&" + DomainSymbol + "_PREPARED(context)->values[" +
+                                std::to_string(Argument.StaticValueIndex) + "u]");
                         }
                     }
+                    Out << "    const HTNAtom* " << ArgumentsArray << "[" << Call.Arguments.size() << "u] = {";
+                    for (size_t I = 0u; I < ArgumentReferences.size(); ++I)
+                        Out << (I == 0u ? "" : ", ") << ArgumentReferences[I];
                     Out << "};\n";
                 }
                 const std::string CallResult = "call_result_" + std::to_string(C);
@@ -3137,13 +2427,15 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
                 if (Call.CallTermSlot >= B.CallTermStringIds.size()) { B.SetError("Generated task call expression has invalid callterm slot"); return {}; }
                 W.DomainExpressionComment(Call.DomainExpression);
                 Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CALLTERM);\n";
-                Out << "    const int " << CallSucceeded << " = HTNCallTermRegistry_InvokeGeneratedCallTerm(context->callterm_binding_context, &HTN_GENERATED_EXECUTION(context)->callterm_slots["
+                const std::string CallSource = "call_source_" + std::to_string(C);
+                EmitGeneratedCallTermSource(W, B, Call.Source, CallSource);
+                Out << "    const int " << CallSucceeded << " = HTNCallTermRegistry_InvokeGeneratedCallTermWithSource(context, &HTN_GENERATED_EXECUTION(context)->callterm_slots["
                     << Call.CallTermSlot << "u], ";
                 if (Call.Arguments.empty())
                     Out << "0, 0u";
                 else
                     Out << ArgumentsArray << ", " << Call.Arguments.size() << "u";
-                Out << ", &" << CallResult << ");\n";
+                Out << ", &" << CallResult << ", &" << CallSource << ");\n";
                 Out << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CALLTERM);\n";
                 Out << "    { const uint64_t fact_storage_generation = HTNWorldState_GetFactStorageGeneration(context->world_state);\n";
                 Out << "      if (HTN_GENERATED_EXECUTION(context)->fact_storage_generation != fact_storage_generation) {\n";
@@ -3170,13 +2462,25 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
         {
             if (Task.ArgumentCount > 0u)
             {
-                Out << "    const HTNAtom* plan_step_arguments[" << Task.ArgumentCount << "u] = {";
+                std::vector<std::string> ArgumentReferences;
+                ArgumentReferences.reserve(Task.ArgumentCount);
+                uint32 ArithmeticTemporary = 0u;
                 for (uint32 ArgumentIndex = 0u; ArgumentIndex < Task.ArgumentCount; ++ArgumentIndex)
                 {
-                    if (ArgumentIndex > 0u)
-                        Out << ", ";
-                    Out << BuildGeneratedValueAtomReference(B, Task.FirstArgument + ArgumentIndex, DomainSymbol);
+                    const uint32 ValueIndex = Task.FirstArgument + ArgumentIndex;
+                    if (ValueIndex >= B.Values.size()) { B.SetError("Generated primitive task argument is out of range"); return {}; }
+                    const ValueRecord& Argument = B.Values[ValueIndex];
+                    ArgumentReferences.emplace_back(Argument.Kind == HTNIRValueKind::Arithmetic
+                        ? EmitGeneratedArithmeticValue(W, B, Argument, DomainSymbol,
+                            "primitive_task_" + std::to_string(T) + "_argument_" + std::to_string(ArgumentIndex),
+                            "    ", ArithmeticTemporary,
+                            "as argument " + std::to_string(ArgumentIndex + 1u) + " of primitive task '" +
+                                (Task.Id < B.Strings.Values.size() ? B.Strings.Values[Task.Id] : std::string("<unknown>")) + "'")
+                        : BuildGeneratedValueAtomReference(B, ValueIndex, DomainSymbol));
                 }
+                Out << "    const HTNAtom* plan_step_arguments[" << Task.ArgumentCount << "u] = {";
+                for (uint32 ArgumentIndex = 0u; ArgumentIndex < Task.ArgumentCount; ++ArgumentIndex)
+                    Out << (ArgumentIndex == 0u ? "" : ", ") << ArgumentReferences[ArgumentIndex];
                 Out << "};\n";
             }
             W.DomainExpressionComment(Task.DomainExpression);
@@ -3209,7 +2513,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
         }
         else
         {
-            const int MethodIndex = B.FindMethodByStringId(Task.Id);
+            const int MethodIndex = B.FindMethodByStringId(Task.Id, Task.ArgumentCount);
             if (MethodIndex < 0)
             {
                 Out << "    HTN_GENERATED_EVENT_DEBUG_END_TASK(context, &" << DomainSymbol << "_PLANNER_DEFINITION, 0);\n";
@@ -3223,10 +2527,21 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
                 const MethodRecord& TargetMethod = B.Methods[static_cast<size_t>(MethodIndex)];
                 if (Task.ArgumentCount != TargetMethod.ParameterCount) { B.SetError("Generated compound task parameter count mismatch"); return {}; }
 
+                uint32 ArithmeticTemporary = 0u;
                 for (uint32 ArgumentIndex = 0u; ArgumentIndex < Task.ArgumentCount; ++ArgumentIndex)
                 {
+                    const uint32 ValueIndex = Task.FirstArgument + ArgumentIndex;
+                    if (ValueIndex >= B.Values.size()) { B.SetError("Generated compound task argument is out of range"); return {}; }
+                    const ValueRecord& Argument = B.Values[ValueIndex];
+                    const std::string ArgumentReference = Argument.Kind == HTNIRValueKind::Arithmetic
+                        ? EmitGeneratedArithmeticValue(W, B, Argument, DomainSymbol,
+                            "compound_task_" + std::to_string(T) + "_argument_" + std::to_string(ArgumentIndex),
+                            "    ", ArithmeticTemporary,
+                            "as argument " + std::to_string(ArgumentIndex + 1u) + " of compound task '" +
+                                (Task.Id < B.Strings.Values.size() ? B.Strings.Values[Task.Id] : std::string("<unknown>")) + "'")
+                        : BuildGeneratedValueAtomReference(B, ValueIndex, DomainSymbol);
                     Out << "    const HTNAtom* compound_argument_" << ArgumentIndex << " = "
-                        << BuildGeneratedValueAtomReference(B, Task.FirstArgument + ArgumentIndex, DomainSymbol) << ";\n";
+                        << ArgumentReference << ";\n";
                 }
                 if (Task.ArgumentCount > 0u)
                 {
@@ -3346,30 +2661,6 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
         Out << "    (void)context;\n";
         Out << "    (void)out_result;\n";
         Out << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_GENERATED_METHOD);\n";
-        // Choice cursors belong to this method invocation. Only conditions reachable
-        // from this method's branches need storage; declaring cursors for the whole
-        // domain needlessly inflates every generated stack frame.
-        std::vector<uint32> MethodFactChoiceCursors;
-        std::vector<uint32> MethodAxiomChoiceCursors;
-        for (uint32 BI = 0u; BI < Method.BranchCount; ++BI)
-        {
-            CollectGeneratedChoiceCursors(B, B.Branches[Method.FirstBranch + BI].Condition,
-                                          MethodBoundVariables,
-                                          MethodFactChoiceCursors,
-                                          MethodAxiomChoiceCursors);
-        }
-
-        for (const uint32 ConditionIndex : MethodFactChoiceCursors)
-        {
-            Out << "    uint32_t fact_choice_cursor_" << ConditionIndex << " = 0u;\n";
-            Out << "    (void)fact_choice_cursor_" << ConditionIndex << ";\n";
-        }
-        for (const uint32 ConditionIndex : MethodAxiomChoiceCursors)
-        {
-            Out << "    uint32_t axiom_choice_cursor_" << ConditionIndex << " = 0u;\n";
-            Out << "    (void)axiom_choice_cursor_" << ConditionIndex << ";\n";
-        }
-
         Out << "    HTN_GENERATED_EVENT_DEBUG_BEGIN_METHOD(context, &" << DomainSymbol << "_PLANNER_DEFINITION, " << M << "u);\n";
         if (Method.BranchCount == 0u)
         {
@@ -3580,10 +2871,9 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
         if (!B.Methods[M].IsExternallyDecomposable) continue;
         if (B.Methods[M].Id >= B.Strings.Values.size()) { B.SetError("Generated externally decomposable method string id is out of range"); return {}; }
         Out << "    if (entry_method == HTN_NO_INDEX && call_head->value.symbol_value == " << DomainSymbol << "_PREPARED(context)->symbols["
-            << B.FindPreparedSymbolSlot(B.Methods[M].Id) << "u]) {\n";
+            << B.FindPreparedSymbolSlot(B.Methods[M].Id) << "u] && call_argument_count == " << B.Methods[M].ParameterCount << "u) {\n";
         if (!B.Methods[M].IsTopLevel)
             Out << "        if (require_top_level) return HTN_DECOMPOSITION_INVALID_CALL;\n";
-        Out << "        if (call_argument_count != " << B.Methods[M].ParameterCount << "u) return HTN_DECOMPOSITION_INVALID_CALL;\n";
         Out << "        entry_method = " << M << "u;\n";
         Out << "    }\n";
     }
