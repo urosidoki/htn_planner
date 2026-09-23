@@ -128,4 +128,8 @@ Get-ChildItem $OutputDirectory -Recurse -File | Where-Object Name -ne 'CHECKSUMS
     '{0}  {1}' -f (Get-Sha256 $_.FullName), $relative
 } | Set-Content "$OutputDirectory/CHECKSUMS.sha256" -Encoding ASCII
 Compress-Archive -LiteralPath $OutputDirectory -DestinationPath $ArchivePath -CompressionLevel Optimal
+$ArchiveChecksumPath = "$ArchivePath.sha256"
+'{0}  {1}' -f (Get-Sha256 $ArchivePath), ([IO.Path]::GetFileName($ArchivePath)) |
+    Set-Content -LiteralPath $ArchiveChecksumPath -Encoding ASCII
 Write-Host "SDK package: $ArchivePath"
+Write-Host "SDK archive checksum: $ArchiveChecksumPath"
