@@ -12,7 +12,7 @@
 The root [README](../README.md) contains the quick start, domain example, build
 instructions and engine integration overview.
 
-- [2.0.0 release candidate and migration](RELEASE_2_0_0.md)
+- [2.0.0 release notes and migration](RELEASE_2_0_0.md)
 - [Integration use cases](USE_CASES.md)
 - [Client context and type conversion](TYPE_CONVERSION.md)
 - [Missing callterm policy](MISSING_CALLTERMS.md)

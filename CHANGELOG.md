@@ -3,7 +3,7 @@
 All notable changes to HTN Planner are documented in this file. Releases follow
 [Semantic Versioning](https://semver.org/).
 
-## 2.0.0 - In preparation
+## 2.0.0 - 2026-09-23
 
 - Method and axiom overloads by arity.
 - Arithmetic arguments across task, callterm and axiom calls.

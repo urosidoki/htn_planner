@@ -1,6 +1,6 @@
-# HTN Planner 2.0.0 — release candidate
+# HTN Planner 2.0.0 — 2026-09-23
 
-Publication is pending the release checklist. Windows x64 / MSVC v143 remains
+Windows x64 / MSVC v143 remains
 the supported SDK target. Linux support is not included in this release.
 
 ## Features and fixes
@@ -55,6 +55,11 @@ Primitive actions, cancellation, file watching, compilation, module loading and
 safe hot reload are client responsibilities. The repository provides integration
 examples. Callterm side effects are not rolled back when planning fails.
 
-The public source and SDK contain only the generated planner path. Development
-history from the private repository must not be pushed into the public repository;
-export the reviewed source snapshot into its existing independent history.
+The public source and SDK contain only the generated planner path.
+
+## SDK validation
+
+On 2026-09-23, the Windows SDK passed all eight variant checks and 24 external
+consumer executions. The negative checks correctly rejected incompatible CRT
+linkage and an unknown variant. These results cover the packaged core, reference
+integration and dynamic-domain consumers; they do not establish Linux support.

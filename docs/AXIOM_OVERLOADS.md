@@ -17,9 +17,10 @@ Axiom calls use the name and number of arguments to select exactly one declarati
 - Includes and qualified `#Base::available` calls resolve the exact signature. An `overrides Base` declaration replaces only that signature; other inherited overloads remain available.
 - Dependency-cycle validation tracks signatures. Calling another arity of the same name is allowed if it does not create a cycle. Recursive axiom dependency cycles remain unsupported and are rejected; diagnostics include arities.
 - Generated execution and compiler editor definition lookup select the matching overload.
-- Generated symbols and the runtime C ABI are unchanged. Regenerate generated domain sources when adopting this feature.
+- Axiom overloading itself preserves generated entry-point names and plan symbols. Release 2.0.0 changes the runtime ABI through its execution-context updates; regenerate domain C and rebuild the host and modules together. See [migration notes](RELEASE_2_0_0.md).
 
 The executable fixture `Domains/Test/axiom_overloads.domain` covers overloads with input, output and IO parameters, arithmetic arguments, exact base calls, overrides, nested calls and backtracking. It uses `WorldStates/Test/axiom_overloads.worldstate`.
+
 ## Backtracking and output arguments
 
 Generated multi-solution axioms support facts, nested axioms, nested `and`, `alt`,

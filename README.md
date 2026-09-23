@@ -14,7 +14,7 @@ The repository includes:
 - An editor, language server, hot reload example, tests and benchmarks.
 - A packageable Windows x64 SDK with CMake integration.
 
-This branch prepares **2.0.0**. See the [release notes and migration guide](docs/RELEASE_2_0_0.md). The generated planner and runtime bridge
+Version **2.0.0** requires migration from 1.x. See the [release notes and migration guide](docs/RELEASE_2_0_0.md). The generated planner and runtime bridge
 ABIs are versioned and validated at runtime.
 
 ## Domain example
@@ -157,8 +157,13 @@ if (!Planner.SetGeneratedPlannerDefinition(CreateNpcHTN_GetDefinition()))
     return false;
 
 HTNPlanningUnit Unit(Database, Planner, HtnSymbol::sGetSymbol("run"));
+Unit.GetExecutionContext().MissingCallTermPolicy = HTNMissingCallTermPolicy::FailSilently;
 const HTNDecompositionStatus Status = Unit.DecomposeTopLevelMethod();
 ```
+
+The example explicitly chooses silent failure for missing callterms. To report them
+through your own diagnostics, configure `Report` and a callback as described in
+[Missing callterm policy](docs/MISSING_CALLTERMS.md).
 
 After a successful decomposition, use `ResolveCurrentPrimitiveTask()` and
 `GetCurrentPrimitiveTask()` to inspect the next action. Call

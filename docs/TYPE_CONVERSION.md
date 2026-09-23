@@ -94,4 +94,3 @@ callback and client pointer are read afresh for every invocation. Atom layouts a
 Regenerate domains and rebuild host, bridge and modules together; older definitions
 and bridge tables are rejected. Remove binding-context `SetClientContext` calls
 and configure the execution descriptor or planning unit instead.
-No engine source or distributed SDK is updated by this change.
