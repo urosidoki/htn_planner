@@ -14,7 +14,7 @@ The repository includes:
 - An editor, language server, hot reload example, tests and benchmarks.
 - A packageable Windows x64 SDK with CMake integration.
 
-Version **2.0.0** requires migration from 1.x. See the [release notes and migration guide](docs/RELEASE_2_0_0.md). The generated planner and runtime bridge
+Version **2.0.1** includes [transactional fact conversion](docs/RELEASE_NOTES_WRITE_FACT.md). Upgrading from 1.x requires migration. See the [release notes and migration guide](docs/RELEASE_2_0_0.md). The generated planner and runtime bridge
 ABIs are versioned and validated at runtime.
 
 ## Domain example

@@ -3,7 +3,7 @@
 All notable changes to HTN Planner are documented in this file. Releases follow
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 2.0.1 - 2026-09-24
 
 ### World-state fact conversion
 

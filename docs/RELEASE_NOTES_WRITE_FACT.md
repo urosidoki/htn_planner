@@ -1,4 +1,4 @@
-# World-state fact conversion — pending release
+# HTN Planner 2.0.1 — world-state fact conversion
 
 ## Changes
 
@@ -30,8 +30,7 @@ services are outside this transaction.
 - No C ABI, planner ABI or `HTNAtom` layout changes are introduced by this update.
   Rebuild C++ consumers to use the new header implementation.
 
-These behavior changes must be considered when choosing the release version;
-unchanged ABI alone does not guarantee drop-in compatibility.
+Although published as 2.0.1, this update changes ownership and unbound-value behavior as described above. Review affected callers before upgrading.
 See [type conversion documentation](TYPE_CONVERSION.md#writing-world-state-facts)
 for the complete contract.
 

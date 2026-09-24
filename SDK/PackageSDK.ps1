@@ -105,7 +105,7 @@ Copy-PackageFile "$PSScriptRoot/HTNConfig.cmake" 'cmake/HTNConfig.cmake'
 Copy-PackageFile "$PSScriptRoot/ValidatePackage.cmd" 'ValidatePackage.cmd'
 Copy-PackageFile "$PSScriptRoot/ValidatePackage.ps1" 'ValidatePackage.ps1'
 Copy-PackageFile "$RepositoryRoot/docs/SDK_VARIANTS.md" 'docs/SDK_VARIANTS.md'
-foreach ($document in @('RELEASE_2_0_0.md', 'USE_CASES.md', 'TYPE_CONVERSION.md', 'MISSING_CALLTERMS.md', 'METHOD_OVERLOADS.md', 'AXIOM_OVERLOADS.md', 'AAA_COMBAT_NPC_DEMO.md')) {
+foreach ($document in @('RELEASE_2_0_0.md', 'RELEASE_NOTES_WRITE_FACT.md', 'USE_CASES.md', 'TYPE_CONVERSION.md', 'MISSING_CALLTERMS.md', 'METHOD_OVERLOADS.md', 'AXIOM_OVERLOADS.md', 'AAA_COMBAT_NPC_DEMO.md')) {
     Copy-PackageFile "$RepositoryRoot/docs/$document" "docs/$document"
 }
 Get-ChildItem "$PSScriptRoot/Examples" -Recurse -File | Where-Object Extension -in @('.cpp','.domain','.txt','.cmake') | ForEach-Object {
