@@ -7,8 +7,39 @@
 
 extern "C" const HTNGeneratedPlannerDefinition* CreatePackageCoreConsumerHTN_GetDefinition(void);
 
+struct PackageFactValue { int32 Value; bool Fail; };
+template<> struct HTNTypeTraits<PackageFactValue> : HTNTypeTraits<int32> {};
+template<> struct HTNTypeConverter<PackageFactValue>
+{
+    static bool ToAtom(void* inContext, const PackageFactValue& inValue, HTNAtom& outAtom)
+    {
+        if (inValue.Fail || !inContext) return false;
+        return HTNTryToAtom(inContext, inValue.Value + *static_cast<int32*>(inContext), outAtom);
+    }
+};
+
+static bool ValidateFactWrites()
+{
+    HTNFactRegistry Registry;
+    const auto* Fact = HtnSymbol::sGetSymbol("package_fact_write");
+    Registry.Register(Fact);
+    HTNWorldState World;
+    World.SetFactRegistry(&Registry);
+    int32 Offset = 10;
+    if (!World.WriteFact(Fact, "native", 1) ||
+        !World.WriteFactWithContext(&Offset, Fact, PackageFactValue{2, false}) ||
+        World.WriteFactWithContext(&Offset, Fact, "temporary", PackageFactValue{3, true}, 4) ||
+        World.WriteFact(Fact, PackageFactValue{3, false})) return false;
+    const std::array<HTNAtomOwner, 1> Expected{HTNAtomOwner(int32{12})};
+    return World.Query("package_fact_write", Expected) == 1u &&
+        World.GetFactArgumentsCollectionSize("package_fact_write", 1u) == 1u &&
+        World.GetFactArgumentsCollectionSize("package_fact_write", 2u) == 1u &&
+        World.GetFactArgumentsCollectionSize("package_fact_write", 3u) == 0u;
+}
+
 int main()
 {
+    if (!ValidateFactWrites()) return 10;
     const HTNGeneratedPlannerDefinition* Definition = CreatePackageCoreConsumerHTN_GetDefinition();
     if (!HTNGeneratedPlanner_ValidateDefinition(Definition))
         return 1;

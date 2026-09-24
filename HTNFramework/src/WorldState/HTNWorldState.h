@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Core/HTNAtom.h"
+#include "Core/HTNTypeConversion.h"
 #include "HTNCoreMinimal.h"
 #include "WorldState/HTNWorldStateFwd.h"
 #include "WorldState/HTNWorldStateHelpers.h"
@@ -78,6 +79,12 @@ public:
     // rows are intentionally preserved.
     template<typename... TArgs>
     bool WriteFact(const HtnSymbol* inFact, TArgs&&... inArguments);
+
+    // Converts all arguments before inserting a row. Failed/unbound conversions
+    // leave the world state unchanged. Native atoms are copied even from rvalues.
+    // The client context is borrowed, not stored.
+    template<typename... TArgs>
+    bool WriteFactWithContext(void* inClientContext, const HtnSymbol* inFact, TArgs&&... inArguments);
 
     // Clears all rows for one fact/arity. Intended for daemons that rebuild a
     // dynamic fact table deterministically each tick/phase.
@@ -272,20 +279,6 @@ void HTNFactArgumentsTable::AddFactArguments(const T& inFactArguments)
     mFactArgumentsCollection.emplace_back(FactArguments);
 }
 
-namespace HTNWorldStateWriteHelpers
-{
-inline HTNAtomOwner MakeAtom(const HTNAtom& inValue) { return HTNAtomOwner(inValue); }
-inline HTNAtomOwner MakeAtom(HTNAtom&& inValue) { return HTNAtomOwner(std::move(inValue)); }
-inline HTNAtomOwner MakeAtom(const char* inValue) { return HTNAtomOwner(std::string(inValue ? inValue : "")); }
-inline HTNAtomOwner MakeAtom(char* inValue) { return HTNAtomOwner(std::string(inValue ? inValue : "")); }
-
-template<typename T>
-HTNAtomOwner MakeAtom(T&& inValue)
-{
-    return HTNAtomOwner(std::forward<T>(inValue));
-}
-}
-
 inline void HTNWorldState::SetFactRegistry(const HTNFactRegistry* inFactRegistry)
 {
     mFactRegistry = inFactRegistry;
@@ -299,15 +292,25 @@ inline HTNFactSlot HTNWorldState::FindFactSlot(const HtnSymbol* inFact) const
 template<typename... TArgs>
 bool HTNWorldState::WriteFact(const HtnSymbol* inFact, TArgs&&... inArguments)
 {
+    return WriteFactWithContext(nullptr, inFact, std::forward<TArgs>(inArguments)...);
+}
+
+template<typename... TArgs>
+bool HTNWorldState::WriteFactWithContext(void* inClientContext, const HtnSymbol* inFact, TArgs&&... inArguments)
+{
     const HTNFactSlot FactSlot = FindFactSlot(inFact);
     if (FactSlot == HTN_INVALID_FACT_SLOT || !inFact)
         return false;
 
     static_assert(sizeof...(TArgs) < HTNWorldStateHelpers::kFactArgumentsSize,
                   "Too many arguments for an HTN fact");
-    std::array<HTNAtomOwner, sizeof...(TArgs)> Arguments{
-        HTNWorldStateWriteHelpers::MakeAtom(std::forward<TArgs>(inArguments))...
-    };
+    std::array<HTNAtomOwner, sizeof...(TArgs)> Arguments;
+    const bool Converted = [&]<size_t... I>(std::index_sequence<I...>) {
+        return ((HTNTryToAtom(inClientContext, inArguments, *Arguments[I].Get()) &&
+                 Arguments[I].IsBound()) && ...);
+    }(std::index_sequence_for<TArgs...>{});
+    if (!Converted)
+        return false;
 
     HTNFactArgumentsTables& Tables = FindOrCreateFactArgumentsTables(inFact);
     HTNFactArgumentsTable& Table = Tables[sizeof...(TArgs)];

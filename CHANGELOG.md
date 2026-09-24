@@ -3,6 +3,21 @@
 All notable changes to HTN Planner are documented in this file. Releases follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### World-state fact conversion
+
+- `WriteFact` now converts arguments through `HTNTryToAtom`, supporting custom
+  types registered with `HTNTypeTraits` and `HTNTypeConverter`.
+- Added `WriteFactWithContext(clientContext, fact, arguments...)`; the context
+  is borrowed for conversion and is not stored in the world state.
+- Failed conversions or unbound results return `false` without modifying fact
+  storage or inserting partial rows.
+- Native atoms and lists are copied, even when passed with `std::move`.
+- **Compatibility:** rvalues are no longer consumed and unbound arguments are
+  rejected. The C ABI and atom layout are unchanged. Rebuild C++ consumers and
+  review the [ownership migration notes](docs/RELEASE_NOTES_WRITE_FACT.md).
+
 ## 2.0.0 - 2026-09-23
 
 - Method and axiom overloads by arity.

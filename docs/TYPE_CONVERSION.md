@@ -94,3 +94,35 @@ callback and client pointer are read afresh for every invocation. Atom layouts a
 Regenerate domains and rebuild host, bridge and modules together; older definitions
 and bridge tables are rejected. Remove binding-context `SetClientContext` calls
 and configure the execution descriptor or planning unit instead.
+
+## Writing world-state facts
+
+`World.WriteFact(Fact, values...)` delegates to
+`World.WriteFactWithContext(nullptr, Fact, values...)`. To resolve engine values
+through client services, use `World.WriteFactWithContext(&Services, Fact, Entity)`.
+Both paths convert each argument through `HTNTryToAtom(context, value, atom)`.
+The symbol must belong to the world's fact registry, as before.
+
+Arguments are owned temporaries until all conversions succeed and produce bound
+atoms. Failure returns `false` without inserting a row or creating fact storage;
+previous rows and other arities remain unchanged. Conversion short-circuits on
+failure and releases temporary owned values. Converter side effects on client
+services are outside this world-state transaction and are not rolled back.
+
+Native HTN values, custom registered types, string literals and mutable/const
+C strings are supported. Null C strings retain the existing empty-string behavior.
+C-string conversion is input-only; use `std::string` for conversion from atoms.
+Zero-argument facts and duplicate-row append behavior are preserved. No client
+context is stored in the world state. Native atoms and lists are copied, even
+when passed with `std::move`; inputs remain usable after successful or failed
+writes. This intentionally replaces the previous rvalue-consuming behavior.
+Keep ownership of raw C atoms/lists and destroy them explicitly; wrap owning
+raw temporaries in `HTNAtomOwner`/`HTNAtomListOwner` before passing them to avoid
+leaks. RAII-owned temporaries clean themselves up normally. Custom converters
+retain their existing `const T&` contract.
+
+This is a C++ header API change only: no C ABI, atom layout or planner ABI change.
+Rebuild consumers to use it. Unbound arguments are now rejected rather than stored.
+
+See the [fact-writing release notes](RELEASE_NOTES_WRITE_FACT.md) for ownership
+migration requirements and the recorded development validation.

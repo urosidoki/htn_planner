@@ -6,6 +6,7 @@
 #include "Core/HTNAtomOwner.h"
 #include "Core/HTNAtomListOwner.h"
 
+#include <cstring>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -217,3 +218,26 @@ struct HTNTypeConverter<const HtnSymbol*>
         return HTNAtom_AssignCopy(&outAtom, Value.Get()) != 0;
     }
 };
+
+// C text is accepted as an input representation. Copy into an owned HTN string;
+// parsing into a borrowed C pointer is deliberately unsupported.
+template<>
+struct HTNTypeTraits<const char*> : HTNTypeTraits<std::string> {};
+template<>
+struct HTNTypeTraits<char*> : HTNTypeTraits<const char*> {};
+template<size_t N>
+struct HTNTypeTraits<char[N]> : HTNTypeTraits<const char*> {};
+
+template<>
+struct HTNTypeConverter<const char*>
+{
+    static bool ToAtom(void*, const char* inValue, HTNAtom& outAtom)
+    {
+        const char* Text = inValue ? inValue : "";
+        return HTNAtom_SetString(&outAtom, Text, static_cast<uint32_t>(std::strlen(Text))) != 0;
+    }
+};
+template<>
+struct HTNTypeConverter<char*> : HTNTypeConverter<const char*> {};
+template<size_t N>
+struct HTNTypeConverter<char[N]> : HTNTypeConverter<const char*> {};
