@@ -342,6 +342,20 @@ project "HTNHotReloadDemoDomain"
         (os.host() == "windows" and " || exit /b 1" or " || exit 1")
     }
 
+project "HTNHotReloadInvalidDomain"
+    location "HTNHotReloadInvalidDomain"
+    kind "SharedLib"
+    language "C++"
+    cppdialect "C++20"
+    targetname "InvalidFactNamesHTN"
+    targetdir ("bin/" .. outputdir .. "/HTNHotReloadDemo")
+    objdir ("int/" .. outputdir .. "/%{prj.name}")
+    files { "HTNHotReloadDemo/generated/Wanderer.generated.c", "HTNHotReloadDemo/Validation/InvalidFactNames.cpp" }
+    includedirs { "HTNFramework/src" }
+    defines { "HTN_GENERATED_MODULE_EXPORTS", "CreateWandererHotReloadHTN_GetDefinition=GetValidWandererDefinition" }
+    links { "HTNRuntimeBridge" }
+    dependson { "HTNHotReloadDemoDomain" }
+
 project "HTNHotReloadDemo"
     location "HTNHotReloadDemo"
     kind "ConsoleApp"
@@ -364,7 +378,7 @@ project "HTNHotReloadDemo"
                   "ThirdParty/optick/src", "ThirdParty/imgui", "ThirdParty/SDL2/include" }
     libdirs { "ThirdParty/SDL2/lib/%{cfg.architecture}" }
     links { "HTNIntegration", "HTNFramework", "SDL2", "SDL2main" }
-    dependson { "HTNHotReloadDemoDomain", "HTNRuntimeBridge", "HTNTranslator" }
+    dependson { "HTNHotReloadDemoDomain", "HTNRuntimeBridge", "HTNTranslator", "HTNHotReloadInvalidDomain" }
     postbuildcommands {
         "{COPYFILE} %{wks.location}/ThirdParty/SDL2/lib/%{cfg.architecture}/SDL2.dll %{cfg.targetdir}",
         "{COPYFILE} %{wks.location}/bin/" .. outputdir .. "/HTNTest/HTNRuntimeBridge.dll %{cfg.targetdir}",

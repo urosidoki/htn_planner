@@ -4,7 +4,7 @@ $HTNVariants = @(foreach ($linkage in @('Static', 'Dynamic')) {
         foreach ($instrumentation in @('Plain', 'Instrumented')) {
             $instrumented = $instrumentation -eq 'Instrumented'
             $defines = @()
-            if ($crt -eq 'Debug') { $defines += 'HTN_DEBUG' } else { $defines += 'HTN_RELEASE' }
+            if ($crt -eq 'Debug') { $defines += @('HTN_DEBUG', '_DEBUG') } else { $defines += @('HTN_RELEASE', 'NDEBUG') }
             if ($instrumented) { $defines += @('HTN_ENABLE_LOGGING', 'HTN_VALIDATE_DOMAIN', 'HTN_DEBUG_DECOMPOSITION') }
             $runtime = 'MultiThreaded'
             if ($crt -eq 'Debug') { $runtime += 'Debug' }

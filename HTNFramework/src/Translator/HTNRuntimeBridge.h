@@ -12,16 +12,16 @@
 
 #include <stdint.h>
 
-// Revision 6 passes the execution descriptor, including missing-callterm policy and callback.
-// Rebuild hosts, bridge and domain modules together; the planner ABI also advances.
+// Revision 7 adds numeric setters emitted by arithmetic expressions.
+// Rebuild hosts, bridge and domain modules together. Planner/atom layouts are unchanged.
 #if defined(HTN_DEBUG_DECOMPOSITION) && defined(HTN_GENERATED_EXECUTION_PROFILING)
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485B0006)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485B0007)
 #elif defined(HTN_DEBUG_DECOMPOSITION)
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x48590006)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x48590007)
 #elif defined(HTN_GENERATED_EXECUTION_PROFILING)
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485A0006)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485A0007)
 #else
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x48580006)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x48580007)
 #endif
 
 #ifdef _WIN32
@@ -46,6 +46,8 @@
     X(void, HTNAtom_AssignMove, (HTNAtom* out_atom, HTNAtom* atom), (out_atom, atom)) \
     X(int, HTNAtom_CreateCallFromPointers, (HTNAtom* out_atom, const void* head, const HTNAtom* const* arguments, uint32_t count), (out_atom, head, arguments, count)) \
     X(void, HTNAtom_SetEmptyList, (HTNAtom* atom), (atom)) \
+    X(void, HTNAtom_SetInt, (HTNAtom* atom, int32_t value), (atom, value)) \
+    X(void, HTNAtom_SetFloat, (HTNAtom* atom, float value), (atom, value)) \
     X(void, HTNAtom_Unbind, (HTNAtom* atom), (atom)) \
     X(int, HTNAtom_Equals, (const HTNAtom* left, const HTNAtom* right), (left, right)) \
     X(HTNAtomType, HTNAtom_GetType, (const HTNAtom* atom), (atom)) \

@@ -21,6 +21,9 @@ mono_crash.*
 
 # Build results
 /build/clang-cl-smoke/
+/build/bridge-coverage/
+/build/bridge-regression-201/
+/build/sdk/build-receipt.json
 /build/linux-smoke/
 /build/linux-smoke-windows/
 [Dd]ebug/

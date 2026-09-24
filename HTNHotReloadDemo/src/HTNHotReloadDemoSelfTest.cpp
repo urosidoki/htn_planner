@@ -66,6 +66,13 @@ int HTNHotReloadDemoSelfTest(const std::filesystem::path& inRoot, const std::fil
             return 1;
         };
         if (!Demo.mDefinition) return Fail("initial domain unavailable");
+        {
+            HTNHotReloadDemo Invalid(inRoot, inBin);
+            Invalid.mActivePath = inBin / "InvalidFactNamesHTN.dll";
+            if (Invalid.LoadDomain() || Invalid.mDefinition || Invalid.mDomainModule ||
+                Invalid.mStatus.find("incompatible ABI/lifecycle") == std::string::npos)
+                return Fail("LoadDomain accepted malformed fact names or failed to unload module");
+        }
         DemoGridTerrain Terrain;
         AIHTNDemoWandererAgent Agent(42u, Demo.mDefinition, 0u, Terrain, Demo.mRegistry);
         if (!Agent.Initialize()) return Fail("agent initialization");
@@ -206,6 +213,16 @@ int HTNHotReloadDemoSelfTest(const std::filesystem::path& inRoot, const std::fil
             for (int Frame = 0; Frame < 30000 && !HasMarker("reload-validation-B-deferred", AfterReloadAge); ++Frame) Step();
             if (!HasMarker("reload-validation-B-deferred", AfterReloadAge)) return Fail("new deferred behavior never executed after moving reload");
         }
+        Agent.ReleaseGeneratedPlanner();
+        if (!CopyFile(inBin / "InvalidFactNamesHTN.dll", Demo.mCandidatePath)) return Fail("invalid fact names fixture copy");
+        const auto ValidRevision = Demo.mActiveRevision;
+        Demo.mCandidateReady = true;
+        if (Demo.HotReload() || !Demo.mDefinition || Demo.mActiveRevision != ValidRevision ||
+            Demo.mStatus.find("previous domain restored") == std::string::npos ||
+            !Agent.AttachGeneratedPlanner(Demo.mDefinition)) return Fail("invalid fact names rollback");
+        Step();
+        if (!Agent.DidLastPlanSucceed() || &Agent.GetWorldState() != WorldState)
+            return Fail("invalid fact names rollback replan");
         Agent.ReleaseGeneratedPlanner();
         if (!WriteFile(Demo.mCandidatePath, "Deliberately invalid DLL")) return Fail("invalid DLL write");
         const auto Revision = Demo.mActiveRevision;

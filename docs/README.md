@@ -3,6 +3,8 @@
 - [Compiler pipeline and IR](COMPILER_IR.md)
 - [Generated execution debugger](GENERATED_DEBUGGER.md)
 - [AAA combat NPC demo](AAA_COMBAT_NPC_DEMO.md)
+- [2.0.2 RuntimeBridge correction](RELEASE_2_0_2.md)
+- [RuntimeBridge API inventory](RUNTIME_BRIDGE_AUDIT.md)
 - [SDK variants](SDK_VARIANTS.md)
 - [SDK distribution](DISTRIBUTION.md)
 - [Release checklist](RELEASE_CHECKLIST.md)

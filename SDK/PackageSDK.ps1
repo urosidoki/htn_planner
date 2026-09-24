@@ -8,11 +8,21 @@ $Platform = 'windows-x86_64'
 $DistRoot = [IO.Path]::GetFullPath("$RepositoryRoot/dist")
 $OutputDirectory = Join-Path $DistRoot "HTNSDK-$Version-$Platform"
 $ArchivePath = "$OutputDirectory.zip"
+$receipt = Get-Content "$RepositoryRoot/build/sdk/build-receipt.json" -Raw | ConvertFrom-Json
+if ($receipt.version -ne $Version -or !$receipt.rebuilt) { throw 'Run BuildAndValidate for this version before packaging' }
 function Require-File([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Missing SDK file: $Path" }
 }
 function Copy-PackageFile([string]$Source, [string]$Relative) {
     Require-File $Source
+    if ([IO.Path]::GetExtension($Source) -in @('.lib','.dll','.exe','.pdb')) {
+        $entry = @($receipt.artifacts | Where-Object {
+            [IO.Path]::GetFullPath("$RepositoryRoot/$($_.path)") -eq [IO.Path]::GetFullPath($Source)
+        })
+        if ($entry.Count -ne 1 -or (Get-Sha256 $Source) -ne $entry[0].sha256) {
+            throw "Artifact does not match the rebuilt release: $Source"
+        }
+    }
     $destination = Join-Path $OutputDirectory $Relative
     New-Item -ItemType Directory -Force -Path (Split-Path $destination) | Out-Null
     Copy-Item -LiteralPath $Source -Destination $destination
@@ -80,7 +90,11 @@ foreach ($component in @('HTNFramework','HTNIntegration')) {
 }
 
 $forbiddenReferences = Get-ChildItem "$OutputDirectory/include" -Recurse -File | Select-String -SimpleMatch @(
-    'HTNNodeVisitorContextBase')
+    'Domain/Interpreter',
+    'Domain\Interpreter',
+    'HTNNodeVisitorContextBase',
+    'Domain/Nodes/', 'Domain/Parser/', 'Domain/Loader/', 'Domain/Semantic/', 'Domain/Tooling/',
+    'Domain\Nodes\', 'Domain\Parser\', 'Domain\Loader\', 'Domain\Semantic\', 'Domain\Tooling\')
 if ($forbiddenReferences) {
     throw "Generated SDK headers reference legacy node APIs: $($forbiddenReferences[0].Path):$($forbiddenReferences[0].LineNumber)"
 }
@@ -104,17 +118,21 @@ Copy-PackageFile "$PSScriptRoot/PackageREADME.md" 'README.md'
 Copy-PackageFile "$PSScriptRoot/HTNConfig.cmake" 'cmake/HTNConfig.cmake'
 Copy-PackageFile "$PSScriptRoot/ValidatePackage.cmd" 'ValidatePackage.cmd'
 Copy-PackageFile "$PSScriptRoot/ValidatePackage.ps1" 'ValidatePackage.ps1'
+Copy-PackageFile "$RepositoryRoot/build/sdk/build-receipt.json" 'build-provenance.json'
 Copy-PackageFile "$RepositoryRoot/docs/SDK_VARIANTS.md" 'docs/SDK_VARIANTS.md'
 foreach ($document in @('RELEASE_2_0_0.md', 'RELEASE_NOTES_WRITE_FACT.md', 'USE_CASES.md', 'TYPE_CONVERSION.md', 'MISSING_CALLTERMS.md', 'METHOD_OVERLOADS.md', 'AXIOM_OVERLOADS.md', 'AAA_COMBAT_NPC_DEMO.md')) {
     Copy-PackageFile "$RepositoryRoot/docs/$document" "docs/$document"
 }
-Get-ChildItem "$PSScriptRoot/Examples" -Recurse -File | Where-Object Extension -in @('.cpp','.domain','.txt','.cmake') | ForEach-Object {
+Copy-PackageFile "$RepositoryRoot/docs/RELEASE_2_0_2.md" 'docs/RELEASE_2_0_2.md'
+Copy-PackageFile "$RepositoryRoot/docs/RUNTIME_BRIDGE_AUDIT.md" 'docs/RUNTIME_BRIDGE_AUDIT.md'
+Get-ChildItem "$PSScriptRoot/Examples" -Recurse -File | Where-Object Extension -in @('.cpp','.domain','.txt','.cmake','.ps1') | ForEach-Object {
     $relative = $_.FullName.Substring(("$PSScriptRoot/Examples").Length).TrimStart('\','/')
     Copy-PackageFile $_.FullName "examples/$relative"
 }
 $manifest = [ordered]@{
     schema_version = 2; sdk_version = $Version; platform = $Platform; architecture = 'x86_64'
     compiler = 'MSVC'; toolset = 'v143'; cpp_standard = 'C++20'; c_standard = 'C11'
+    build_id = $receipt.build_id
     variants = $HTNVariants
     components = @(
         @{name='HTNFramework';kind='static-library';required=$true},
@@ -128,8 +146,7 @@ Get-ChildItem $OutputDirectory -Recurse -File | Where-Object Name -ne 'CHECKSUMS
     '{0}  {1}' -f (Get-Sha256 $_.FullName), $relative
 } | Set-Content "$OutputDirectory/CHECKSUMS.sha256" -Encoding ASCII
 Compress-Archive -LiteralPath $OutputDirectory -DestinationPath $ArchivePath -CompressionLevel Optimal
-$ArchiveChecksumPath = "$ArchivePath.sha256"
 '{0}  {1}' -f (Get-Sha256 $ArchivePath), ([IO.Path]::GetFileName($ArchivePath)) |
-    Set-Content -LiteralPath $ArchiveChecksumPath -Encoding ASCII
+    Set-Content "$ArchivePath.sha256" -Encoding ASCII
 Write-Host "SDK package: $ArchivePath"
-Write-Host "SDK archive checksum: $ArchiveChecksumPath"
+Write-Host "SDK archive checksum: $ArchivePath.sha256"

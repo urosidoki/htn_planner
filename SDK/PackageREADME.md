@@ -43,5 +43,5 @@ CMake and manifest metadata are the supported selection interfaces. Do not infer
 ABI compatibility from a folder name or mix headers and binaries from separate
 releases.
 
-See [2.0.0 migration](docs/RELEASE_2_0_0.md), [use cases](docs/USE_CASES.md),
+See [2.0.2 RuntimeBridge correction](docs/RELEASE_2_0_2.md), [2.0.0 migration](docs/RELEASE_2_0_0.md), [use cases](docs/USE_CASES.md),
 [client services](docs/TYPE_CONVERSION.md) and [missing-callterm handling](docs/MISSING_CALLTERMS.md).

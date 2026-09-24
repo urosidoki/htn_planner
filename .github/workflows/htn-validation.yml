@@ -52,10 +52,7 @@ jobs:
             'HTNFramework/src/Domain/Loader')) {
             if (Test-Path $path) { Write-Error "Removed frontend path is present: $path"; exit 1 }
           }
-          $project = Get-Content build/sdk/HTNFramework/HTNFramework.vcxproj -Raw
-          foreach ($source in @('HTNDomainInterpreter.cpp', 'HTNDecompositionContext.cpp', 'HTNDomainLoader.cpp', 'HTNDomainParser.cpp', 'HTNDomainNode.cpp')) {
-            if ($project.Contains($source)) { Write-Error "Unexpected frontend source: $source"; exit 1 }
-          }
+          & ./SDK/ValidateSourceBoundary.ps1
       - name: Build isolated translator
         run: |
           msbuild HTNSDK.sln /m /t:Rebuild /p:Configuration=StaticReleasePlain /p:Platform=x64 /p:PreferredToolArchitecture=x64
@@ -133,14 +130,15 @@ jobs:
           msbuild HTN.sln /m /t:Rebuild /p:Configuration=$env:BUILD_CONFIGURATION /p:Platform=x64 /p:PreferredToolArchitecture=x64 /bl:test-results/build.binlog
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run tests
+        working-directory: HTNTest
         env:
           BUILD_CONFIGURATION: ${{ matrix.configuration }}
         run: |
-          $testExe = ".\bin\$env:BUILD_CONFIGURATION-windows-x86_64\HTNTest\HTNTest.exe"
-          $testArgs = @('--gtest_output=xml:test-results/tests.xml')
+          $testExe = "..\bin\$env:BUILD_CONFIGURATION-windows-x86_64\HTNTest\HTNTest.exe"
+          $testArgs = @('--gtest_output=xml:../test-results/tests.xml')
           & $testExe @testArgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          [xml]$report = Get-Content test-results/tests.xml
+          [xml]$report = Get-Content ../test-results/tests.xml
           if ([int]$report.testsuites.tests -eq 0) { throw 'No tests executed' }
       - name: Allocation probe self-test
         if: matrix.probe

@@ -3,6 +3,17 @@
 All notable changes to HTN Planner are documented in this file. Releases follow
 [Semantic Versioning](https://semver.org/).
 
+## 2.0.2 - Unreleased
+
+- Fix missing `HTNAtom_SetInt` and `HTNAtom_SetFloat` exports in RuntimeBridge.
+- **Rebuild required:** RuntimeBridge ABI revision is now 7. Rebuild the host,
+  bridge and generated domain modules together. Planner and atom layouts are unchanged.
+- Add generated DLL arithmetic/backtracking coverage and object/export checks
+  across all eight SDK variants; verify build provenance and complete package checksums.
+- Validate hot reload definitions before callbacks and test malformed fact-name rollback.
+- Extend missing-callterm policy checks to Release consumers and enforce SDK source isolation.
+- See [release notes and migration](docs/RELEASE_2_0_2.md).
+
 ## 2.0.1 - 2026-09-24
 
 ### World-state fact conversion

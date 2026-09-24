@@ -62,4 +62,14 @@ files. Validation covers:
 - Instrumented debugger event capture.
 - Rejection of incompatible CRT and unknown variant selections.
 
-A successful release gate reports all eight variants and 24 consumer executions.
+A successful release gate reports all eight variants, 24 consumer executions and
+8 object/export checks. The latter compare generated module references against
+the RuntimeBridge DLL exports and import library.
+
+CoreConsumer checks missing-callterm policies, including Release fallbacks with
+NDEBUG. Consumers use only extracted package files. The build also runs
+`SDK/ValidateSourceBoundary.ps1` to reject legacy frontend source dependencies.
+
+The hot reload demo validates definitions before invoking module lifecycle
+callbacks. Its headless self-test rejects a malformed fact-name table and checks
+unloading and recovery of the previous valid module.

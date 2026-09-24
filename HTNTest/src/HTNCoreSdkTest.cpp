@@ -29,6 +29,13 @@ TEST(HTNCoreSdkTest, ValidatesDefinitionsWithoutHooks)
     Invalid = *Definition;
     Invalid.decompose_call = nullptr;
     EXPECT_EQ(HTNGeneratedPlanner_ValidateDefinition(&Invalid), 0);
+    Invalid = *Definition;
+    Invalid.fact_count = 1u;
+    Invalid.fact_names = nullptr;
+    EXPECT_EQ(HTNGeneratedPlanner_ValidateDefinition(&Invalid), 0);
+    const char* InvalidNames[] = {nullptr};
+    Invalid.fact_names = InvalidNames;
+    EXPECT_EQ(HTNGeneratedPlanner_ValidateDefinition(&Invalid), 0);
 #ifdef HTN_GENERATED_EXECUTION_PROFILING
     Invalid = *Definition;
     Invalid.get_execution_profiling = nullptr;
@@ -54,5 +61,30 @@ TEST(HTNCoreSdkTest, CoreSourcesDoNotDependOnOptionalIntegration)
         EXPECT_EQ(Text.find("HTNPlannerHook"), std::string::npos) << Entry.path().string();
         EXPECT_EQ(Text.find("HTNPlanningUnit"), std::string::npos) << Entry.path().string();
         EXPECT_EQ(Text.find("AIHtnDaemonBase"), std::string::npos) << Entry.path().string();
+    }
+}
+
+TEST(HTNCoreSdkTest, GeneratedSourcesDoNotIncludeInterpreterFrontend)
+{
+    const auto Root = HTNFileHelpers::MakeAbsolutePath("HTNFramework/src");
+    for (const auto& Entry : std::filesystem::recursive_directory_iterator(Root))
+    {
+        const auto Relative = std::filesystem::relative(Entry.path(), Root).generic_string();
+        if (!Entry.is_regular_file() ||
+            (Relative.find("Translator/") != 0 && Relative != "WorldState/HTNGeneratedWorldState.h"))
+            continue;
+        const auto Extension = Entry.path().extension();
+        if (Extension != ".h" && Extension != ".cpp" && Extension != ".inl") continue;
+        std::ifstream Input(Entry.path());
+        ASSERT_TRUE(Input.good());
+        std::string Line;
+        while (std::getline(Input, Line))
+        {
+            if (Line.find("include") == std::string::npos) continue;
+            for (char& Character : Line) if (Character == '\\') Character = '/';
+            for (const char* Forbidden : {"Domain/Interpreter/", "Domain/Nodes/", "Domain/Parser/",
+                                         "Domain/Loader/", "Domain/Semantic/", "Domain/Tooling/", "Domain/HTNDomainHelpers.h"})
+                EXPECT_EQ(Line.find(Forbidden), std::string::npos) << Relative << ": " << Line;
+        }
     }
 }

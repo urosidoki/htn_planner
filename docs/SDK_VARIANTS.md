@@ -38,6 +38,11 @@ htn_configure_target(MyConsumer)
 required definitions to that target. Every library linked into the same final binary
 must use a compatible CRT and iterator-debug setting.
 
+The manifest also propagates `_DEBUG` for Debug CRT variants and `NDEBUG` for
+Release CRT variants through the imported targets, including custom configuration
+names such as `Validation`. Consequently, assertions in consumer translation
+units follow the selected SDK runtime configuration.
+
 Generated source, the host runtime and `HTNRuntimeBridge` must use the same
 instrumentation contract. `HTNGeneratedPlanner_ValidateDefinition` and the bridge
 binding API reject incompatible modules at runtime.

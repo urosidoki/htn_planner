@@ -1,0 +1,23 @@
+// Copyright (c) 2026 Jose Antonio Escribano. All rights reserved.
+(:domain BridgeCoverage top_level_domain
+    (:constants Data (items (marker 7 true "long owned string for bridge validation")))
+    (:method (run) top_level_method
+        (rollback () ((!discarded) (fail)))
+        (success
+            (and (#choose ?value) (== ?value 2)
+                 (== (+ 1 2) 3) (== (- 5 2) 3) (== (* 2 3) 6)
+                 (== (/ 8 2) 4) (== (% 7 3) 1)
+                 (== (++ 2) 3) (== (-- 2) 1)
+                 (== (+ 1.5 2.0) 3.5) (== (++ 1.5) 2.5)
+                 (== (-- 1.5) 0.5) (< (- 3) 0) (>= 4 4)
+                 (split_list @items ?head ?tail)
+                 (?empty (call empty_list)) (call probe ?value))
+            ((normal ?value)
+             (!values 7 (- 3) 1.5 true false marker "long owned string for bridge validation" ?empty @items ?tail
+                      (+ ?value 1) (+ 1.5 ?value) (call identity ?value))
+             (&later (++ ?value)))))
+    (:method (normal ?inp_value) (ok () ((!normal ?inp_value))))
+    (:method (later ?inp_value) (ok () ((!later ?inp_value))))
+    (:method (fail) (never (and (== 1 2)) ((!unexpected))))
+    (:axiom (choose ?out_value) (and (candidate ?out_value)))
+)

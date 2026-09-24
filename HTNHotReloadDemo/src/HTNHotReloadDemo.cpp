@@ -111,15 +111,7 @@ bool HTNHotReloadDemo::LoadDomain()
     const auto Get = reinterpret_cast<GetDefinition>(
         SDL_LoadFunction(mDomainModule, "CreateWandererHotReloadHTN_GetDefinition"));
     mDefinition = Get ? Get() : nullptr;
-    if (!mDefinition || mDefinition->abi_version != HTN_GENERATED_PLANNER_ABI_VERSION ||
-        !mDefinition->prepared_storage_size || !mDefinition->initialize_prepared_storage ||
-        !mDefinition->destroy_prepared_storage || !mDefinition->execution_storage_size ||
-        !mDefinition->initialize_execution_storage || !mDefinition->destroy_execution_storage ||
-        !mDefinition->decompose_call
-#ifdef HTN_GENERATED_EXECUTION_PROFILING
-        || !mDefinition->get_execution_profiling
-#endif
-        )
+    if (!HTNGeneratedPlanner_ValidateDefinition(mDefinition))
     {
         mStatus = "Missing domain export or incompatible ABI/lifecycle. Recompile with matching flags.";
         UnloadDomain();

@@ -91,3 +91,17 @@ Planner ABI versions: plain `0x48540004`, debug `0x48550005`, profiling
 Regenerate domains and rebuild hosts, runtime bridge and modules together.
 Old definitions/tables are rejected; the atom and cached-callterm layouts remain
 unchanged. See [type conversions](TYPE_CONVERSION.md) for converter migration.
+
+## Production fallback validation
+
+The SDK's external CoreConsumer checks both the C++ registry and the generated
+invocation API for unregistered names, absent bindings and missing daemon instances.
+It checks FailSilently and Report in all variants. Release variants additionally
+check Unset, an invalid enum value and Report without a callback: each returns an
+unbound failure without invoking a callback. A registered working call remains
+callable under each policy. Checks use return codes, not assertions.
+
+The SDK manifest propagates NDEBUG for Release and _DEBUG for Debug, matching
+the compiled library. Development Release does not currently disable assertions;
+its death tests do not replace these packaged production checks. No API or ABI
+change is required for this coverage.
