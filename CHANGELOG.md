@@ -3,7 +3,7 @@
 All notable changes to HTN Planner are documented in this file. Releases follow
 [Semantic Versioning](https://semver.org/).
 
-## 2.0.2 - Unreleased
+## 2.0.2 - 2026-09-25
 
 - Fix missing `HTNAtom_SetInt` and `HTNAtom_SetFloat` exports in RuntimeBridge.
 - **Rebuild required:** RuntimeBridge ABI revision is now 7. Rebuild the host,
