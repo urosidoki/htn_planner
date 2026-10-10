@@ -97,11 +97,24 @@ bool HTNPlanningUnit::EnsureGeneratedExecutionStorage()
     return true;
 }
 
+const HTNGeneratedExecutionInfo* HTNPlanningUnit::GetGeneratedExecutionInfo() const
+{
+    return mGeneratedExecutionStorage && mGeneratedExecutionDefinition
+        ? mGeneratedExecutionDefinition->get_execution_info(mGeneratedExecutionStorage) : nullptr;
+}
+
 HTNDecompositionStatus HTNPlanningUnit::DecomposeTopLevelMethod(const HTNAtom& inCall)
 {
     const HTNDecompositionStatus Result = ExecuteCall(inCall, true, mLastDecomposition);
     if (Result == HTN_DECOMPOSITION_SUCCEEDED)
-        SetCurrentPlanFromLastDecomposition();
+    {
+        if (!SetCurrentPlanFromLastDecomposition())
+        {
+            HTN_LOG_ERROR("Could not copy active plan: list allocation failed; check ListAllocator capacity and lifetime");
+            mLastDecomposition.SetResult(HTNAtomOwner{});
+            return HTN_DECOMPOSITION_OUT_OF_MEMORY;
+        }
+    }
     else
         ClearCurrentPlan();
     return Result;
@@ -168,7 +181,7 @@ HTNDecompositionStatus HTNPlanningUnit::ExecuteCall(const HTNAtom& inCall, const
     return Result;
 }
 
-void HTNPlanningUnit::SetCurrentPlanFromLastDecomposition()
+bool HTNPlanningUnit::SetCurrentPlanFromLastDecomposition()
 {
     HTNAllocationTrace::PhaseScope AllocationPhase(HTNAllocationTrace::Phase::ActivePlanCopy);
     mCurrentPlan.clear();
@@ -177,11 +190,20 @@ void HTNPlanningUnit::SetCurrentPlanFromLastDecomposition()
     const HTNAtomOwner& Plan = mLastDecomposition.GetResult();
     const int32 PlanStepCount = Plan.GetListSize();
     if (PlanStepCount <= 0)
-        return;
+        return true;
 
     mCurrentPlan.reserve(static_cast<std::size_t>(PlanStepCount));
     for (int32 PlanStepIndex = 0; PlanStepIndex < PlanStepCount; ++PlanStepIndex)
-        mCurrentPlan.emplace_back(Plan.GetListElement(static_cast<uint32>(PlanStepIndex)));
+    {
+        HTNAtomOwner Step;
+        if (!HTNAtom_CopyWithAllocator(Step.Get(), &Plan.GetListElement(static_cast<uint32>(PlanStepIndex)), mExecutionContext.ListAllocator))
+        {
+            ClearCurrentPlan();
+            return false;
+        }
+        mCurrentPlan.emplace_back(std::move(Step));
+    }
+    return true;
 }
 
 HTNPrimitiveTaskResolution HTNPlanningUnit::ResolveCurrentPrimitiveTask()
@@ -198,7 +220,7 @@ HTNPrimitiveTaskResolution HTNPlanningUnit::ResolveCurrentPrimitiveTask()
             return HTNPrimitiveTaskResolution::Failed;
         }
 
-        const HTNAtomOwner Call = HTNMakeCallFromDeferredPlanStep(mCurrentPlan[mCurrentPrimitiveTaskIndex]);
+        const HTNAtomOwner Call = HTNMakeCallFromDeferredPlanStep(mCurrentPlan[mCurrentPrimitiveTaskIndex], mExecutionContext.ListAllocator);
         if (!HTNIsValidCall(Call))
         {
             ClearCurrentPlan();
@@ -220,7 +242,16 @@ HTNPrimitiveTaskResolution HTNPlanningUnit::ResolveCurrentPrimitiveTask()
         {
             Replacement.reserve(static_cast<std::size_t>(DeferredStepCount));
             for (int32 StepIndex = 0; StepIndex < DeferredStepCount; ++StepIndex)
-                Replacement.emplace_back(DeferredPlan.GetListElement(static_cast<uint32>(StepIndex)));
+            {
+                HTNAtomOwner Step;
+                if (!HTNAtom_CopyWithAllocator(Step.Get(), &DeferredPlan.GetListElement(static_cast<uint32>(StepIndex)), mExecutionContext.ListAllocator))
+                {
+                    HTN_LOG_ERROR("Could not copy deferred plan: list allocation failed; check ListAllocator capacity and lifetime");
+                    ClearCurrentPlan();
+                    return HTNPrimitiveTaskResolution::Failed;
+                }
+                Replacement.emplace_back(std::move(Step));
+            }
         }
 
         const auto Current = mCurrentPlan.begin() + static_cast<std::ptrdiff_t>(mCurrentPrimitiveTaskIndex);

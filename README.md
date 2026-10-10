@@ -32,12 +32,21 @@ bare `true`/`false` are ordinary symbols. The debugger and natvis display BOOL
 as `0`/`1`. Migrate old boolean literals and regenerate domains. Standalone
 callterm conditions continue to require a BOOL result.
 
+Optional per-instance allocators now control owning lists and backtracking
+overflow. List pools can use a safe new/delete fallback; backtracking supports
+client-owned scratch memory and per-call usage statistics. See the
+[list allocator](docs/INSTANCE_LIST_ALLOCATOR.md) and
+[backtracking allocator](docs/BACKTRACKING_ALLOCATOR.md) lifetime contracts.
+
+**ABI migration:** regenerate domains and rebuild the host and runtime bridge
+with matching headers and libraries. Previous generated modules are rejected.
+
 Instrumented builds retain facts that the
 domain does not reference in `HTNWorldState::GetUnregisteredFacts()` for inspection.
 Those writes still return `false`, and the planner cannot query the captured rows.
 Plain builds retain their previous behavior. The instrumented C++ world-state
-layout changes: rebuild clients with matching headers and libraries. The C runtime
-and generated-domain ABIs remain unchanged. See the [2.4.0 release notes](docs/RELEASE_2_4_0.md).
+layout also changes. Atom/list layouts remain unchanged. See the
+[2.4.0 release notes](docs/RELEASE_2_4_0.md).
 
 Native negative literals, numeric debugger labels and their compiler-tool migration
 requirements are documented in the [2.3.0 release notes](docs/RELEASE_2_3_0.md).

@@ -1,5 +1,10 @@
 (:domain PackageCoreConsumer top_level_domain
 
+    (:method (run_backtracking ?inp_depth) top_level_method
+        (step (and (> ?inp_depth 0))
+            ((!step ?inp_depth) (run_backtracking (-- ?inp_depth)) (!step ?inp_depth)))
+        (done () ((!leaf))))
+
     (:constants (true 1) (false 0))
 
     (:method (boolean_condition) top_level_method

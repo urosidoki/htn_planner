@@ -340,7 +340,8 @@ local function AddGeneratedModuleProject(inName, inEntryPoint, inOutputDirectory
 end
 
 AddGeneratedModuleProject("HTNTestDomainModule", "CreateBacktrackingPolicyModuleHTN", "HTNTestDomainModule/generated")
-AddGeneratedModuleProject("HTNTestIncompatibleDomainModule", "CreateBacktrackingPolicyIncompatibleHTN", "HTNTestIncompatibleDomainModule/generated", "0x48540001u")
+-- The previous plain ABI predates backtracking allocators. Reject before execution.
+AddGeneratedModuleProject("HTNTestIncompatibleDomainModule", "CreateBacktrackingPolicyIncompatibleHTN", "HTNTestIncompatibleDomainModule/generated", "0x48540008u")
 
 -- HTNDemo
 group "Demos"
@@ -573,6 +574,9 @@ group "Tests"
                 "%{prj.name}/generated/backtracking_policy_fixed_small/backtracking_policy.generated.c",
                 "%{prj.name}/generated/backtracking_policy_fixed_enough/backtracking_policy.generated.c",
                 "%{prj.name}/generated/instrumentation_none/runtime_lists.generated.c",
+                "%{prj.name}/generated/instrumentation_none/instance_allocator.generated.c",
+                "%{prj.name}/generated/instrumentation_none/backtracking_allocator.generated.c",
+                "%{prj.name}/generated/instance_allocator_overflow/instance_allocator.generated.c",
                 "%{prj.name}/generated/instrumentation_none/negative_literals.generated.c",
                 "%{prj.name}/generated/instrumentation_none/recursion_dispatch.generated.c",
                 "%{prj.name}/generated/instrumentation_none/shared_implementations.generated.c" } or {},
@@ -590,11 +594,13 @@ group "Tests"
         links { "dl" }
     filter {}
     GenerateHTNDomains("HTNTest/generated")
-    for _, domain in ipairs { "runtime_lists", "recursion_dispatch", "shared_implementations", "negative_literals" } do
+    for _, domain in ipairs { "runtime_lists", "recursion_dispatch", "shared_implementations", "negative_literals", "instance_allocator", "backtracking_allocator" } do
         GenerateHTNDomain("Domains/Test/" .. domain .. ".domain", "HTNTest/generated/instrumentation_none",
             MakeHTNEntryPoint(domain):gsub("HTN$", "NoneHTN"), "--instrumentation=none")
     end
     local runtimeSupport = _OPTIONS["runtime-backtracking-support"] == "enabled" and " --runtime-backtracking-support=enabled" or ""
+    GenerateHTNDomain("Domains/Test/instance_allocator.domain", "HTNTest/generated/instance_allocator_overflow",
+        "CreateInstanceAllocatorOverflowHTN", "--backtracking-policy=fixed-with-overflow --backtracking-capacity=2 --runtime-backtracking-support=enabled")
     GenerateHTNDomain("Domains/Test/backtracking_policy.domain", "HTNTest/generated/backtracking_policy_overflow",
         "CreateBacktrackingPolicyOverflowHTN", "--backtracking-policy=fixed-with-overflow --backtracking-capacity=2" .. runtimeSupport)
     GenerateHTNDomain("Domains/Test/backtracking_policy.domain", "HTNTest/generated/backtracking_policy_fixed_small",

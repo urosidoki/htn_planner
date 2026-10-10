@@ -128,6 +128,9 @@ foreach ($document in @('RELEASE_2_0_0.md', 'RELEASE_NOTES_WRITE_FACT.md', 'USE_
 }
 Copy-PackageFile "$RepositoryRoot/docs/RELEASE_NOTES_BOOLEAN_CALLTERMS.md" 'docs/RELEASE_NOTES_BOOLEAN_CALLTERMS.md'
 Copy-PackageFile "$RepositoryRoot/docs/RUNTIME_LISTS.md" 'docs/RUNTIME_LISTS.md'
+Copy-PackageFile "$RepositoryRoot/docs/INSTANCE_LIST_ALLOCATOR.md" 'docs/INSTANCE_LIST_ALLOCATOR.md'
+Copy-PackageFile "$RepositoryRoot/docs/BACKTRACKING_ALLOCATOR.md" 'docs/BACKTRACKING_ALLOCATOR.md'
+Copy-PackageFile "$RepositoryRoot/docs/RELEASE_NOTES_INSTANCE_ALLOCATOR.md" 'docs/RELEASE_NOTES_INSTANCE_ALLOCATOR.md'
 Copy-PackageFile "$RepositoryRoot/docs/GENERATED_INSTRUMENTATION.md" 'docs/GENERATED_INSTRUMENTATION.md'
 Copy-PackageFile "$RepositoryRoot/docs/RELEASE_2_1_0.md" 'docs/RELEASE_2_1_0.md'
 Copy-PackageFile "$RepositoryRoot/docs/RELEASE_2_2_0.md" 'docs/RELEASE_2_2_0.md'

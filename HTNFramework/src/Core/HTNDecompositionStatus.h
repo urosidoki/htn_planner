@@ -21,7 +21,8 @@ typedef enum HTNDecompositionStatus
     // continuations than the configured generated capacity can store.
     HTN_DECOMPOSITION_BACKTRACKING_CAPACITY_EXCEEDED,
 
-    // Generated planning required dynamic backtracking storage, but allocation failed.
+    // Generated planning could not allocate owned values or backtracking storage
+    // (including exhaustion of a client-supplied list allocator).
     HTN_DECOMPOSITION_OUT_OF_MEMORY,
 
     // Required execution inputs such as world state, callterm registry, execution

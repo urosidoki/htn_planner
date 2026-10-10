@@ -12,16 +12,16 @@
 
 #include <stdint.h>
 
-// Revision 7 adds numeric setters emitted by arithmetic expressions.
-// Rebuild hosts, bridge and domain modules together. Planner/atom layouts are unchanged.
+// Revision 10 adds per-call backtracking allocation and usage statistics.
+// Rebuild hosts, bridge and generated domains together; the planner context ABI changes.
 #if defined(HTN_DEBUG_DECOMPOSITION) && defined(HTN_GENERATED_EXECUTION_PROFILING)
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485B0008)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485B000A)
 #elif defined(HTN_DEBUG_DECOMPOSITION)
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x48590008)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x4859000A)
 #elif defined(HTN_GENERATED_EXECUTION_PROFILING)
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485A0008)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x485A000A)
 #else
-#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x48580008)
+#define HTN_RUNTIME_BRIDGE_ABI_VERSION UINT32_C(0x4858000A)
 #endif
 
 #ifdef _WIN32
@@ -37,6 +37,14 @@
 #endif
 
 #define HTN_RUNTIME_BRIDGE_BASE_FUNCTIONS(X) \
+    X(HTNGeneratedBacktrackingOverflow*, HTNGeneratedBacktracking_CreateOverflowWithAllocator, (const HTNBacktrackingAllocator* allocator, HTNBacktrackingAllocationStats* stats), (allocator, stats)) \
+    X(void, HTNGeneratedBacktracking_BeginDecomposition, (HTNGeneratedBacktrackingOverflow** overflow, const HTNBacktrackingAllocator* allocator, HTNBacktrackingAllocationStats* stats), (overflow, allocator, stats)) \
+    X(int, HTNAtom_CopyWithAllocator, (HTNAtom* out_atom, const HTNAtom* atom, void* allocator), (out_atom, atom, allocator)) \
+    X(int, HTNAtom_AssignCopyWithAllocator, (HTNAtom* out_atom, const HTNAtom* atom, void* allocator), (out_atom, atom, allocator)) \
+    X(void, HTNAtom_SetEmptyListWithAllocator, (HTNAtom* atom, void* allocator), (atom, allocator)) \
+    X(int, HTNAtom_CreateCallFromPointersWithAllocator, (HTNAtom* out_atom, const void* head, const HTNAtom* const* arguments, uint32_t count, void* allocator), (out_atom, head, arguments, count, allocator)) \
+    X(int, HTNAtomList_SplitWithAllocator, (const HTNAtomList* list, HTNAtomListSplitDirection direction, HTNAtom* out_element, HTNAtom* out_remainder, void* allocator), (list, direction, out_element, out_remainder, allocator)) \
+    X(int, HTNGeneratedBacktracking_PushContinuationSnapshotOverflowWithAllocator, (HTNGeneratedBacktrackingOverflow* overflow, uint32_t slot, const HTNAtom* value, void* allocator), (overflow, slot, value, allocator)) \
     X(void, HTNAtom_Init, (HTNAtom* atom), (atom)) \
     X(void, HTNAtom_InitRange, (HTNAtom* atoms, uint32_t count), (atoms, count)) \
     X(void, HTNAtom_Destroy, (HTNAtom* atom), (atom)) \
@@ -89,7 +97,7 @@
 
 #ifdef HTN_DEBUG_DECOMPOSITION
 #  define HTN_RUNTIME_BRIDGE_DEBUG_FUNCTIONS(X) \
-    X(void, HTNGeneratedEventDebug_BeginPlan, (HTNGeneratedDebugger* debugger, const HTNGeneratedVariableStorage* variables, const HTNGeneratedPlannerDefinition* domain, uint32_t index), (debugger, variables, domain, index)) \
+    X(void, HTNGeneratedEventDebug_BeginPlan, (HTNGeneratedDebugger* debugger, const HTNGeneratedVariableStorage* variables, const HTNGeneratedPlannerDefinition* domain, uint32_t index, int independent_lists), (debugger, variables, domain, index, independent_lists)) \
     X(void, HTNGeneratedEventDebug_EndPlan, (HTNGeneratedDebugger* debugger, const HTNGeneratedVariableStorage* variables, const HTNGeneratedPlannerDefinition* domain, int result), (debugger, variables, domain, result)) \
     X(void, HTNGeneratedEventDebug_BeginMethod, (HTNGeneratedDebugger* debugger, const HTNGeneratedVariableStorage* variables, const HTNGeneratedPlannerDefinition* domain, uint32_t index), (debugger, variables, domain, index)) \
     X(void, HTNGeneratedEventDebug_EndMethod, (HTNGeneratedDebugger* debugger, const HTNGeneratedVariableStorage* variables, const HTNGeneratedPlannerDefinition* domain, int result), (debugger, variables, domain, result)) \

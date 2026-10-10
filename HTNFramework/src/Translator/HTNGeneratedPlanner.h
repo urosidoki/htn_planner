@@ -4,6 +4,7 @@
 
 #include "Core/HTNAtomC.h"
 #include "Core/HTNBacktrackingMode.h"
+#include "Core/HTNBacktrackingAllocator.h"
 #include "Core/HTNCallTermError.h"
 #include "Core/HTNDecompositionStatus.h"
 
@@ -12,13 +13,13 @@
 
 #ifndef HTN_GENERATED_PLANNER_ABI_VERSION
 #if defined(HTN_DEBUG_DECOMPOSITION) && defined(HTN_GENERATED_EXECUTION_PROFILING)
-#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48570009)
+#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x4857000B)
 #elif defined(HTN_DEBUG_DECOMPOSITION)
-#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48550009)
+#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x4855000B)
 #elif defined(HTN_GENERATED_EXECUTION_PROFILING)
-#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48560007)
+#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48560009)
 #else
-#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48540007)
+#define HTN_GENERATED_PLANNER_ABI_VERSION UINT32_C(0x48540009)
 #endif
 #endif
 
@@ -105,6 +106,7 @@ typedef struct HTNGeneratedExecutionInfo
     uint32_t peak_call_frames;
     size_t call_frame_size;
     const char* last_error;
+    HTNBacktrackingAllocationStats backtracking_allocations;
 } HTNGeneratedExecutionInfo;
 typedef const HTNGeneratedExecutionInfo* (*HTNGeneratedGetExecutionInfoFn)(const void* storage);
 #ifdef HTN_GENERATED_EXECUTION_PROFILING
@@ -127,6 +129,16 @@ struct HTNGeneratedPlannerContext
     void* client_context;
     HTNCallTermErrorPolicy callterm_error_policy;
     HTNCallTermErrorCallback callterm_error_callback;
+    /* Optional borrowed HTNAtomListAllocator (opaque to generated C). NULL keeps
+       existing allocation policies. Must outlive execution storage and all owning
+       results, including plans retained after this call. Never shared implicitly. */
+    void* list_allocator;
+    /* Optional borrowed overflow allocator. Lifetime: descriptor, user_data and
+       backing storage must survive this synchronous decompose_call. All custom
+       blocks are released before return, including failure; the client may then
+       restore its scratch marker. Clear/replace this field before another call
+       if the allocator no longer exists. NULL retains reusable heap storage. */
+    const HTNBacktrackingAllocator* backtracking_allocator;
 };
 
 typedef int (*HTNGeneratedTaskContinuationFn)(const HTNGeneratedPlannerContext* context, HTNAtom* out_result);

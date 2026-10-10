@@ -71,16 +71,23 @@ add_test(NAME BridgeSymbols COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/ValidateBridgeSymbols.py"
     "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/DomainModule.dir"
     "$<TARGET_FILE:HTN::HTNRuntimeBridge>")
+endif()
 add_library(IncompatibleDomainModule SHARED "${CMAKE_CURRENT_BINARY_DIR}/Core/example.generated.c")
 add_dependencies(IncompatibleDomainModule CoreConsumer)
+if(DEFINED _planner_abi)
+    math(EXPR _previous_planner_abi "${_planner_abi} - 1")
+else()
+    set(_previous_planner_abi 0x48540008u)
+endif()
 target_compile_definitions(IncompatibleDomainModule PRIVATE HTN_GENERATED_MODULE_EXPORTS
-    HTN_GENERATED_PLANNER_ABI_VERSION=0x48540001u)
+    HTN_GENERATED_PLANNER_ABI_VERSION=${_previous_planner_abi})
 target_link_libraries(IncompatibleDomainModule PRIVATE HTN::HTNRuntimeBridge)
-target_link_options(IncompatibleDomainModule PRIVATE -Wl,-z,defs)
+if(UNIX)
+    target_link_options(IncompatibleDomainModule PRIVATE -Wl,-z,defs)
+endif()
 htn_configure_target(IncompatibleDomainModule)
 add_test(NAME IncompatibleDomainABI COMMAND BridgeConsumer "$<TARGET_FILE:IncompatibleDomainModule>"
     "$<TARGET_FILE:HTN::HTNRuntimeBridge>" --expect-incompatible)
-endif()
 
 if(HTN_VALIDATE_NEGATIVE_CASES AND WIN32)
     # Validation deliberately links a /MDd client to the /MTd SDK.

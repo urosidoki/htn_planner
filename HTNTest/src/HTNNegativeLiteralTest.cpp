@@ -221,6 +221,7 @@ protected:
         Context.callterm_binding_context = &Hook.GetCallTermBindingContext();
         Context.prepared_storage = Hook.GetGeneratedPreparedStorage();
         Context.callterm_error_policy = HTNCallTermErrorPolicy::FailSilently;
+        Context.backtracking_mode = HTN_BACKTRACKING_ALL;
         Context.execution_storage = ::operator new(Definition->execution_storage_size);
         ASSERT_TRUE(Definition->initialize_execution_storage(Context.execution_storage));
 #ifdef HTN_DEBUG_DECOMPOSITION

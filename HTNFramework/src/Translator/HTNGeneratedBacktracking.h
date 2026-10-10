@@ -13,6 +13,12 @@ extern "C" {
 typedef struct HTNGeneratedBacktrackingOverflow HTNGeneratedBacktrackingOverflow;
 
 HTNGeneratedBacktrackingOverflow* HTNGeneratedBacktracking_CreateOverflow(void);
+HTNGeneratedBacktrackingOverflow* HTNGeneratedBacktracking_CreateOverflowWithAllocator(
+    const HTNBacktrackingAllocator* allocator, HTNBacktrackingAllocationStats* stats);
+/* Starts fresh statistics; drops default cached blocks when selecting a custom
+   allocator. stats must outlive retained default overflow (execution storage). */
+void HTNGeneratedBacktracking_BeginDecomposition(HTNGeneratedBacktrackingOverflow** overflow,
+    const HTNBacktrackingAllocator* allocator, HTNBacktrackingAllocationStats* stats);
 void HTNGeneratedBacktracking_ResetOverflow(HTNGeneratedBacktrackingOverflow* overflow);
 void HTNGeneratedBacktracking_DestroyOverflow(HTNGeneratedBacktrackingOverflow* overflow);
 
@@ -21,6 +27,8 @@ void HTNGeneratedBacktracking_DestroyOverflow(HTNGeneratedBacktrackingOverflow* 
 int HTNGeneratedBacktracking_PushContinuationSnapshotOverflow(HTNGeneratedBacktrackingOverflow* overflow,
                                                               uint32_t variable_slot,
                                                               const HTNAtom* value);
+int HTNGeneratedBacktracking_PushContinuationSnapshotOverflowWithAllocator(HTNGeneratedBacktrackingOverflow* overflow,
+    uint32_t variable_slot, const HTNAtom* value, void* allocator);
 int HTNGeneratedBacktracking_PushPendingContinuationOverflow(HTNGeneratedBacktrackingOverflow* overflow,
                                                              uint64_t variable_frame_id,
                                                              HTNGeneratedTaskContinuationFn continuation,

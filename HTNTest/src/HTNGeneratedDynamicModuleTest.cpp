@@ -153,7 +153,7 @@ TEST(HTNGeneratedDynamicModuleTest, RuntimeBridgeRejectsInvalidAPIAndAcceptsMatc
 
     HTNHostRuntimeAPI Invalid = API;
     // Same feature configuration, previous bridge ABI revision.
-    Invalid.abi_version = (API.abi_version & UINT32_C(0xFFFF0000)) | UINT32_C(1);
+    Invalid.abi_version = API.abi_version - 1u;
     EXPECT_EQ(Bind(&Invalid), 0);
     Invalid = API;
     --Invalid.size;

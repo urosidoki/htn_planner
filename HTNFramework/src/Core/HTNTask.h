@@ -143,7 +143,7 @@ HTN_NODISCARD inline HTNPlanStepKind HTNGetPlanStepKind(const HTNAtomOwner& inSt
     return HTNGetPlanStepKind(inStep.Get());
 }
 
-HTN_NODISCARD inline HTNAtomOwner HTNMakeCallFromDeferredPlanStep(const HTNAtomOwner& inStep)
+HTN_NODISCARD inline HTNAtomOwner HTNMakeCallFromDeferredPlanStep(const HTNAtomOwner& inStep, void* inListAllocator = nullptr)
 {
     if (HTNGetPlanStepKind(inStep) != HTNPlanStepKind::DeferredCall)
         return HTNAtomOwner{};
@@ -151,14 +151,19 @@ HTN_NODISCARD inline HTNAtomOwner HTNMakeCallFromDeferredPlanStep(const HTNAtomO
     const HtnSymbol* DeferredHead = HTNGetCallHead(inStep);
     const std::string& DeferredName = DeferredHead->GetString();
     HTNAtomOwner Call;
-    Call.PushBackElementToList(HTNAtomOwner(HtnSymbol::sGetSymbol(DeferredName.substr(1u))));
+    HTNAtom_SetEmptyListWithAllocator(Call.Get(), inListAllocator);
+    HTNAtomOwner Head(HtnSymbol::sGetSymbol(DeferredName.substr(1u)));
+    if (!HTNAtom_PushBackListElementMove(Call.Get(), Head.Get()))
+        return HTNAtomOwner{};
 
     const uint32 ArgumentCount = HTNGetCallArgumentCount(inStep);
     for (uint32 ArgumentIndex = 0u; ArgumentIndex < ArgumentCount; ++ArgumentIndex)
     {
         const HTNAtom* Argument = HTNFindCallArgument(inStep, ArgumentIndex);
-        if (Argument)
-            Call.PushBackElementToList(*Argument);
+        HTNAtomOwner Copy;
+        if (!Argument || !HTNAtom_CopyWithAllocator(Copy.Get(), Argument, inListAllocator) ||
+            !HTNAtom_PushBackListElementMove(Call.Get(), Copy.Get()))
+            return HTNAtomOwner{};
     }
     return Call;
 }

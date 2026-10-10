@@ -1,0 +1,45 @@
+// Copyright (c) 2026 Jose Antonio Escribano joseantonioescribanoayllon@gmail.com
+(:domain instance_allocator top_level_domain
+    (:constants (static_items (fixed (1 2) (3 4))))
+
+    (:method (run ?inp_value) top_level_method
+        (branch
+            (and
+                (= ?items (payload ?inp_value (nested ?inp_value) (1 2) (call supplied_list)))
+                (call inspect ?items)
+                (split_list_front ?items ?head ?tail)
+                (split_list_back ?tail ?last ?rest)
+                (= ?from_call (call supplied_list))
+            )
+            ((!values ?items ?head ?tail ?last ?rest @static_items ?from_call)
+             (&later ?items)
+             (copy_input ?items))))
+
+    (:method (later ?inp_items)
+        (branch () ((!deferred ?inp_items))))
+
+    (:method (copy_input ?inp_items) top_level_method
+        (branch (and (split_list_front ?inp_items ?head ?tail))
+            ((!copied ?inp_items ?head ?tail))))
+
+    (:method (choices) top_level_method
+        (branch
+            (and (#choose ?value) (accepted ?value))
+            ((!chosen ?value) (&later ?value))))
+    (:axiom (choose ?out_value) (and (candidate ?out_value)))
+
+    (:method (fallback ?inp_number) top_level_method
+        (first
+            (and (= ?items (discard ?inp_number (nested ?inp_number))))
+            ((!discarded ?items) (never)))
+        (second
+            (and (= ?items (kept ?inp_number (nested ?inp_number))) (call after_failure))
+            ((!kept ?items))))
+    (:method (never) (branch (and (== 1 2)) ((!unexpected))))
+
+    (:method (fail ?inp_number) top_level_method
+        (branch (and (= ?items (discard ?inp_number)) (call inspect ?items) (== 1 2)) ((!unexpected))))
+
+    (:method (call_failure ?inp_number) top_level_method
+        (branch (and (= ?items (discard ?inp_number)) (call failing ?items)) ((!unexpected))))
+)

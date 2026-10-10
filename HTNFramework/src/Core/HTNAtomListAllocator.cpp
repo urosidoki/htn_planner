@@ -182,3 +182,47 @@ uint32 HTNPooledAtomListAllocator::GetAllocatedNodeCount() const
 {
     return mAllocatedNodeCount;
 }
+
+bool HTNPooledAtomListAllocator::Owns(const HTNAtomNode* inNode) const
+{
+    if (!inNode || mSlots.empty())
+        return false;
+    const auto Address = reinterpret_cast<std::uintptr_t>(inNode);
+    const auto Begin = reinterpret_cast<std::uintptr_t>(mSlots.data());
+    return Address >= Begin && Address - Begin < mSlots.size() * sizeof(Slot) &&
+        (Address - Begin) % sizeof(Slot) == offsetof(Slot, mStorage);
+}
+
+HTNSafePooledAtomListAllocator::HTNSafePooledAtomListAllocator(const uint32 inCapacity, HTNAtomListAllocator& inFallback)
+    : mPool(inCapacity), mFallback(inFallback)
+{
+}
+
+HTNSafePooledAtomListAllocator::~HTNSafePooledAtomListAllocator()
+{
+    assert(mFallbackNodeCount == 0 && "All fallback list nodes must be released before their safe pool");
+}
+
+HTNAtomNode* HTNSafePooledAtomListAllocator::Allocate()
+{
+    if (HTNAtomNode* Node = mPool.Allocate())
+        return Node;
+    HTNAtomNode* Node = mFallback.Allocate();
+    if (Node)
+        ++mFallbackNodeCount;
+    return Node;
+}
+
+void HTNSafePooledAtomListAllocator::Deallocate(HTNAtomNode* inNode)
+{
+    if (!inNode)
+        return;
+    if (mPool.Owns(inNode))
+        mPool.Deallocate(inNode);
+    else
+    {
+        assert(mFallbackNodeCount > 0);
+        --mFallbackNodeCount;
+        mFallback.Deallocate(inNode);
+    }
+}

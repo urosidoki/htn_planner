@@ -1,5 +1,17 @@
 # Generated planner selection
 
+For call-local backtracking overflow allocation and per-call statistics, see
+[backtracking allocators](../../../docs/BACKTRACKING_ALLOCATOR.md). The borrowed
+`backtracking_allocator` survives only the synchronous call; custom blocks are
+released before return. Its lifetime differs from `list_allocator`, which must
+survive all referencing values and retained plans. Rebuild/regenerate domains when
+updating the context ABI (current revisions: plain/profiling 9, debug 11; bridge 10).
+
+For owning list allocation, see [per-instance list allocators](../../../docs/INSTANCE_LIST_ALLOCATOR.md).
+The optional borrowed `list_allocator` selects an allocator for generated owning
+list values, including returned plans. Fixed execution arrays and prepared literal
+storage retain their existing allocation strategy.
+
 Generated domains export an immutable `HTNGeneratedPlannerDefinition` accessor next to their
 entry point. The host explicitly owns/chooses the definition it wants to execute; there is no
 process-global generated-domain registry.
@@ -19,9 +31,12 @@ operation: the first compatible table wins and later calls are accepted only whe
 identical. Shipping builds continue to compile generated domains directly into the executable.
 
 The host table is `HTNHostRuntimeAPI`, declared in `Translator/HTNRuntimeBridge.h`.
-Its `HTN_RUNTIME_BRIDGE_ABI_VERSION` has revision 8: callterm invocation receives the execution descriptor, including
-client context, callterm error policy and report callback. The callback reports missing callterms and argument/return conversion failures.
-Rebuild the host, bridge and imported domain modules together; old bridge
+Its `HTN_RUNTIME_BRIDGE_ABI_VERSION` has revision 10: it includes allocator-aware list
+helpers, backtracking allocation services and the updated context/debugger ABI.
+Callterm invocation receives the execution descriptor, including client context,
+callterm error policy and report callback. The callback reports missing callterms
+and argument/return conversion failures. Rebuild the host, bridge and imported
+domain modules together; old bridge
 tables are rejected. This is separate from the planner descriptor ABI below.
 Callterm C declarations live in `Translator/HTNCallTermBridge.h`; the
 `HTNGeneratedCallTerm` representation and resolve export are unchanged; both
@@ -81,8 +96,8 @@ storage allocation or DLL loader. HTNIntegration's hook calls the same function
 and preserves the selected definition when a replacement is rejected.
 
 The value contains the `0x4854` HTN ABI marker, a schema revision in its low 16 bits
-(currently `7`, or `8` with decomposition debugging), and two build-option bits
-that alter the descriptor layout:
+(currently `9` without decomposition debugging and `11` with it), and two
+build-option bits that alter the descriptor layout:
 
 | Bit | Required ABI option |
 | --- | --- |

@@ -109,7 +109,8 @@ def main():
                      "AAA_COMBAT_NPC_DEMO.md", "COMPILER_IR.md", "GENERATED_DEBUGGER.md",
                      "LINUX_SMOKE.md", "RELEASE_2_0_0.md", "RELEASE_NOTES_AXIOM_ASSIGNMENTS.md",
                      "RELEASE_NOTES_BOOLEAN_CALLTERMS.md", "RELEASE_NOTES_GENERATED_DEBUGGER.md", "RELEASE_NOTES_NESTED_CALLS.md",
-                     "RELEASE_NOTES_WRITE_FACT.md"):
+                     "RELEASE_NOTES_WRITE_FACT.md", "INSTANCE_LIST_ALLOCATOR.md",
+                     "BACKTRACKING_ALLOCATOR.md", "RELEASE_NOTES_INSTANCE_ALLOCATOR.md"):
         copy(root / "docs" / filename, f"docs/{filename}")
     for source in (root / "SDK/Examples").rglob("*"):
         if source.is_file() and source.suffix in (".cpp", ".domain", ".txt", ".cmake", ".py"):

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Core/HTNBacktrackingMode.h"
+#include "Core/HTNBacktrackingAllocator.h"
 #include "Core/HTNCallTermError.h"
 
 /*
@@ -49,4 +50,15 @@ typedef struct HTNPlannerExecutionContext
     void* ClientContext;
     HTNCallTermErrorPolicy CallTermErrorPolicy;
     HTNCallTermErrorCallback CallTermErrorCallback;
+    // Optional borrowed HTNAtomListAllocator for generated owning lists. Lifetime:
+    // must outlive storage and every referencing value, including retained plans,
+    // copies and active/deferred plans. Never reset it at decomposition return if
+    // such values remain alive.
+    void* ListAllocator;
+    // Generated backtracking overflow only. Lifetime: descriptor, user_data and
+    // backing memory must survive each synchronous decomposition. All custom
+    // blocks are released before return, including failure; a scratch marker can
+    // then be restored by the client. A persistent context must replace/clear
+    // this pointer before invoking it again if the allocator was local to a call.
+    const HTNBacktrackingAllocator* BacktrackingAllocator;
 } HTNPlannerExecutionContext;

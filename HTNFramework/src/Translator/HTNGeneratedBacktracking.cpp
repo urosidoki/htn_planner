@@ -12,7 +12,36 @@
 
 extern "C" HTNGeneratedBacktrackingOverflow* HTNGeneratedBacktracking_CreateOverflow(void)
 {
-    return new (std::nothrow) HTNGeneratedBacktrackingOverflow();
+    return HTNGeneratedBacktracking_CreateOverflowWithAllocator(nullptr, nullptr);
+}
+
+extern "C" HTNGeneratedBacktrackingOverflow* HTNGeneratedBacktracking_CreateOverflowWithAllocator(
+    const HTNBacktrackingAllocator* inAllocator, HTNBacktrackingAllocationStats* outStats)
+{
+    if (inAllocator && (!inAllocator->allocate || !inAllocator->deallocate))
+        return nullptr;
+    HTNGeneratedBacktrackingMemory Memory;
+    if (inAllocator) Memory.Allocator = *inAllocator;
+    Memory.Stats = outStats;
+    void* Raw = Memory.Allocate(sizeof(HTNGeneratedBacktrackingOverflow), alignof(HTNGeneratedBacktrackingOverflow));
+    return Raw ? new (Raw) HTNGeneratedBacktrackingOverflow(Memory) : nullptr;
+}
+
+extern "C" void HTNGeneratedBacktracking_BeginDecomposition(HTNGeneratedBacktrackingOverflow** ioOverflow,
+    const HTNBacktrackingAllocator* inAllocator, HTNBacktrackingAllocationStats* outStats)
+{
+    if (inAllocator)
+    {
+        HTNGeneratedBacktracking_DestroyOverflow(*ioOverflow);
+        *ioOverflow = nullptr;
+    }
+    *outStats = {};
+    if (*ioOverflow)
+    {
+        (*ioOverflow)->Memory.Stats = outStats;
+        outStats->current_bytes = (*ioOverflow)->Memory.ReservedBytes;
+        outStats->peak_bytes = outStats->current_bytes;
+    }
 }
 
 extern "C" void HTNGeneratedBacktracking_ResetOverflow(HTNGeneratedBacktrackingOverflow* inOverflow)
@@ -25,7 +54,11 @@ extern "C" void HTNGeneratedBacktracking_ResetOverflow(HTNGeneratedBacktrackingO
 
 extern "C" void HTNGeneratedBacktracking_DestroyOverflow(HTNGeneratedBacktrackingOverflow* inOverflow)
 {
-    delete inOverflow;
+    if (!inOverflow) return;
+    // Retain the callbacks while destroying the object that owns their descriptor.
+    HTNGeneratedBacktrackingMemory Memory = inOverflow->Memory;
+    inOverflow->~HTNGeneratedBacktrackingOverflow();
+    Memory.Deallocate(inOverflow, sizeof(HTNGeneratedBacktrackingOverflow), alignof(HTNGeneratedBacktrackingOverflow));
 }
 
 extern "C" int HTNGeneratedBacktracking_PushContinuationSnapshotOverflow(
@@ -33,13 +66,19 @@ extern "C" int HTNGeneratedBacktracking_PushContinuationSnapshotOverflow(
     const uint32_t inVariableSlot,
     const HTNAtom* inValue)
 {
+    return HTNGeneratedBacktracking_PushContinuationSnapshotOverflowWithAllocator(inOverflow, inVariableSlot, inValue, nullptr);
+}
+
+extern "C" int HTNGeneratedBacktracking_PushContinuationSnapshotOverflowWithAllocator(
+    HTNGeneratedBacktrackingOverflow* inOverflow, const uint32_t inVariableSlot, const HTNAtom* inValue, void* inAllocator)
+{
     if (!inOverflow)
         return 0;
 
     HTNGeneratedBacktrackingOverflow::ContinuationSnapshotEntry Entry;
     Entry.Variable = inVariableSlot;
-    if (inValue)
-        Entry.Value = *inValue;
+    if (inValue && !HTNAtom_AssignCopyWithAllocator(Entry.Value.Get(), inValue, inAllocator))
+        return 0;
 
     HTNAllocationTrace::Scope AllocationScope(HTNAllocationTrace::Source::PendingContinuationSnapshot);
     return inOverflow->ContinuationSnapshots.emplace_back(std::move(Entry)) ? 1 : 0;

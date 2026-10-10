@@ -38,6 +38,7 @@ struct HTNPlanningUnitGeneratedTimingBreakdown
 class HTNDatabaseHook;
 class HTNPlannerHook;
 struct HTNGeneratedPlannerDefinition;
+struct HTNGeneratedExecutionInfo;
 class HTNGeneratedDebugger;
 
 // Planning unit structure that holds the planner hook and the database
@@ -108,6 +109,11 @@ public:
     // Returns the last decomposition.
     HTN_NODISCARD const HTNGeneratedPlanResult& GetLastDecomposition() const;
 
+    // Borrowed diagnostics of the latest generated call (including deferred).
+    // nullptr before storage exists. Copy the values before the next execution,
+    // storage replacement or destruction; statistics do not retain allocators.
+    HTN_NODISCARD const HTNGeneratedExecutionInfo* GetGeneratedExecutionInfo() const;
+
     // The planning unit owns the active plan produced by DecomposeTopLevelMethod.
     // ResolveCurrentPrimitiveTask expands any deferred calls at the current slot
     // until either a primitive task is ready, the plan is complete, or a deferred
@@ -127,7 +133,7 @@ private:
     // Deferred targets are an internal execution detail. Consumers may enter a
     // domain only through an explicit top-level method.
     HTNDecompositionStatus ExecuteCall(const HTNAtom& inCall, bool inRequireTopLevel, HTNGeneratedPlanResult& outDecomposition);
-    void SetCurrentPlanFromLastDecomposition();
+    bool SetCurrentPlanFromLastDecomposition();
     bool EnsureGeneratedExecutionStorage();
 
     HTNPlannerExecutionContext mExecutionContext{};

@@ -1,0 +1,25 @@
+// Copyright (c) 2026 Jose Antonio Escribano joseantonioescribanoayllon@gmail.com
+(:domain backtracking_allocator top_level_domain
+    (:method (walk ?inp_count) top_level_method
+        (step (and (> ?inp_count 0))
+            ((!before (item ?inp_count)) (walk (-- ?inp_count)) (!after ?inp_count)))
+        (done () ((!leaf))))
+
+    (:method (broken ?inp_count) top_level_method
+        (step (and (> ?inp_count 0))
+            ((!discard (item ?inp_count)) (broken (-- ?inp_count)) (!unreachable))))
+
+    (:method (fallback ?inp_count) top_level_method
+        (attempt () ((broken ?inp_count)))
+        (success () ((!kept))))
+
+    (:method (choices) top_level_method
+        (branch (and (#choose ?count) (accepted ?count)) ((walk ?count) (!chosen ?count))))
+    (:axiom (choose ?out_count) (and (candidate ?out_count)))
+
+    (:method (deferred ?inp_count) top_level_method
+        (branch () ((&walk ?inp_count))))
+
+    (:method (no_overflow) top_level_method
+        (branch () ((!done))))
+)

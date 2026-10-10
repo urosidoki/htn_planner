@@ -435,8 +435,8 @@ void EmitGeneratedVariableSetMove(CodeWriter& W, const std::string& inSlot, cons
 
 void EmitGeneratedVariableSetCopy(CodeWriter& W, const std::string& inSlot, const std::string& inValue, const std::string& inIndent)
 {
-    W.Out << inIndent << "HTNAtom_AssignCopy(&HTN_GENERATED_EXECUTION(context)->variables.values[" << inSlot
-          << "], " << inValue << ");\n";
+    W.Out << inIndent << "if (HTN_GENERATED_ASSIGN_COPY(context, &HTN_GENERATED_EXECUTION(context)->variables.values[" << inSlot
+          << "], " << inValue << "))\n";
     W.Out << inIndent << "HTN_GENERATED_EXECUTION(context)->variables.bound_mask[(" << inSlot
           << ") >> 6u] |= (UINT64_C(1) << ((" << inSlot << ") & 63u));\n";
 }
@@ -468,7 +468,7 @@ void EmitGeneratedCheckpointPush(CodeWriter& W, const GeneratedCheckpointPlan& i
         const std::string Saved = "environment_checkpoint_" + std::to_string(inPlan.Id) + "_slot_" + std::to_string(Slot);
         W.Out << inIndent << "{ const HTNAtom* checkpoint_value = HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, "
               << Slot << "u);\n";
-        W.Out << inIndent << "  if (checkpoint_value) HTNAtom_Copy(&" << Saved << ", checkpoint_value);\n";
+        W.Out << inIndent << "  if (checkpoint_value) HTN_GENERATED_COPY(context, &" << Saved << ", checkpoint_value);\n";
         W.Out << inIndent << "  else HTNAtom_Init(&" << Saved << "); }\n";
     }
     W.Profile << inIndent << "HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_CHOICE_BACKTRACK);\n";
@@ -1069,20 +1069,20 @@ void EmitGeneratedOwnedValue(CodeWriter& W, const HTNCompilerIR& B, const ValueR
     const std::string Location = " Source: " + File + ":" + std::to_string(Value.Source.Range.Begin.Line) + ":" +
         std::to_string(Value.Source.Range.Begin.Column) + " (domain '" + B.DomainId + "').";
     const auto Error = [&](const std::string& Message) {
-        W.Out << Indent << "    if (!" << Valid << ") HTN_GENERATED_EXECUTION(context)->execution_info.last_error = \""
+        W.Out << Indent << "    if (!" << Valid << " && HTN_GENERATED_EXECUTION(context)->failure_state == HTN_DECOMPOSITION_NO_PLAN) HTN_GENERATED_EXECUTION(context)->execution_info.last_error = \""
               << EscapeCString(Message + Location) << "\";\n";
     };
     W.Out << Indent << "if (" << Valid << ") {\n";
     if (Value.Kind == HTNIRValueKind::RuntimeList)
     {
-        W.Out << Indent << "    HTNAtom_SetEmptyList(" << Target << ");\n";
+        W.Out << Indent << "    HTNAtom_SetEmptyListWithAllocator(" << Target << ", context->list_allocator);\n";
         for (const auto& Child : B.RuntimeExpressions[Value.RuntimeExpression].Children)
         {
             const std::string Name = "list_element_" + std::to_string(Temporary++);
             W.Out << Indent << "    { HTNAtom " << Name << "; HTNAtom_Init(&" << Name << ");\n";
             EmitGeneratedOwnedValue(W, B, Child, Domain, "&" + Name, Valid, Indent + "        ", Temporary);
             W.Out << Indent << "        if (" << Valid << ") {\n";
-            W.Out << Indent << "            " << Valid << " = HTNAtom_PushBackListElementMove(" << Target << ", &" << Name << ");\n";
+            W.Out << Indent << "            " << Valid << " = HTN_GENERATED_ALLOCATION_RESULT(context, HTNAtom_PushBackListElementMove(" << Target << ", &" << Name << "));\n";
             Error("Unable to allocate runtime list element '" + B.Strings.Values[Child.DebugText] + "'.");
             W.Out << Indent << "        }\n";
             W.Out << Indent << "        HTNAtom_Destroy(&" << Name << "); }\n";
@@ -1125,6 +1125,13 @@ void EmitGeneratedOwnedValue(CodeWriter& W, const HTNCompilerIR& B, const ValueR
                   << "u, " << Target << ", &" << Name << "_source);\n";
             W.Profile << Indent << "        HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CALLTERM);\n";
             Error("Callterm '" + B.Strings.Values[Value.Text] + "' failed while constructing a runtime list.");
+            // Client-owned results retain their owner. Copy list payloads into the
+            // instance allocator before incorporating them into a runtime expression.
+            W.Out << Indent << "        if (" << Valid << " && context->list_allocator && (" << Target << ")->type == HTN_ATOM_TYPE_LIST) {\n";
+            W.Out << Indent << "            HTNAtom owned_result; HTNAtom_Init(&owned_result);\n";
+            W.Out << Indent << "            " << Valid << " = HTN_GENERATED_COPY(context, &owned_result, " << Target << ");\n";
+            W.Out << Indent << "            HTNAtom_AssignMove(" << Target << ", &owned_result);\n";
+            W.Out << Indent << "        }\n";
             W.Out << Indent << "        { const uint64_t generation = HTNWorldState_GetFactStorageGeneration(context->world_state);\n";
             W.Out << Indent << "          if (HTN_GENERATED_EXECUTION(context)->fact_storage_generation != generation) {\n";
             W.Out << Indent << "              if (!" << Domain << "_PREPARE_FACTS(HTN_GENERATED_EXECUTION(context)->fact_slots, context->world_state, context->prepared_storage)) {\n";
@@ -1165,7 +1172,7 @@ void EmitGeneratedOwnedValue(CodeWriter& W, const HTNCompilerIR& B, const ValueR
         W.Out << Indent << "    " << Valid << " = element && HTNAtom_IsBound(element);\n";
         Error("Runtime list element '" + Expression + "' is unbound.");
         W.Out << Indent << "    if (" << Valid << ") {\n";
-        W.Out << Indent << "        " << Valid << " = HTNAtom_AssignCopy(" << Target << ", element);\n";
+        W.Out << Indent << "        " << Valid << " = HTN_GENERATED_ASSIGN_COPY(context, " << Target << ", element);\n";
         Error("Unable to copy runtime list element '" + Expression + "'.");
         W.Out << Indent << "    }\n";
     }
@@ -1179,6 +1186,7 @@ void EmitGeneratedConditionLeaf(CodeWriter& W, const HTNCompilerIR& B, const uin
 {
     if (inCondition >= B.Conditions.size()) { B.SetError("Generated condition index is out of range"); return; }
 
+    W.Out << "    if (HTN_GENERATED_EXECUTION(context)->failure_state != HTN_DECOMPOSITION_NO_PLAN) goto " << W.Label(inFailure) << ";\n";
     const ConditionRecord& Condition = B.Conditions[inCondition];
     W.DomainExpressionComment(Condition.DomainExpression);
     if (Condition.Kind == HTN_CONDITION_ASSIGNMENT)
@@ -1201,7 +1209,7 @@ void EmitGeneratedConditionLeaf(CodeWriter& W, const HTNCompilerIR& B, const uin
         W.Out << "        const HTNAtom* assignment_value = " << Reference << ";\n";
         W.Out << "        int condition_result = assignment_value && HTNAtom_IsBound(assignment_value) && HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, " << Output.VariableSlot << "u) == NULL;\n";
         W.Out << "        if (condition_result) {\n";
-        W.Out << "            condition_result = HTNAtom_AssignCopy(&HTN_GENERATED_EXECUTION(context)->variables.values[" << Output.VariableSlot << "u], assignment_value);\n";
+        W.Out << "            condition_result = HTN_GENERATED_ASSIGN_COPY(context, &HTN_GENERATED_EXECUTION(context)->variables.values[" << Output.VariableSlot << "u], assignment_value);\n";
         W.Out << "            if (condition_result) HTN_GENERATED_EXECUTION(context)->variables.bound_mask[" << (Output.VariableSlot >> 6u) << "u] |= (UINT64_C(1) << " << (Output.VariableSlot & 63u) << "u);\n";
         W.Out << "        }\n";
         if (RuntimeList) W.Out << "        HTNAtom_Destroy(&runtime_list);\n";
@@ -1282,9 +1290,9 @@ void EmitGeneratedConditionLeaf(CodeWriter& W, const HTNCompilerIR& B, const uin
         W.Out << "        int split_valid = 0;\n";
         W.Out << "        HTNAtom_Init(&split_element);\n";
         W.Out << "        HTNAtom_Init(&split_remainder);\n";
-        W.Out << "        if (split_list_value && split_list_value->type == HTN_ATOM_TYPE_LIST &&\n";
-        W.Out << "            HTNAtomList_Split(&split_list_value->value.list_value, " << Direction
-              << ", &split_element, &split_remainder)) {\n";
+        W.Out << "        if (split_list_value && split_list_value->type == HTN_ATOM_TYPE_LIST && split_list_value->value.list_value.size != 0u &&\n";
+        W.Out << "            HTN_GENERATED_ALLOCATION_RESULT(context, HTNAtomList_SplitWithAllocator(&split_list_value->value.list_value, " << Direction
+              << ", &split_element, &split_remainder, context->list_allocator))) {\n";
         W.Out << "            split_valid = 1;\n";
 
         if (ElementOutput.Kind == HTNIRValueKind::Variable && ElementOutput.VariableSlot != kNoIndex)
@@ -2039,6 +2047,18 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
 #endif
     Out << "\n";
 
+    Out << "static int " << Prefix << "_ALLOCATION_RESULT(const HTNGeneratedPlannerContext* context, int result)\n{\n";
+    Out << "    if (!result) {\n";
+    Out << "        HTN_GENERATED_EXECUTION(context)->failure_state = HTN_DECOMPOSITION_OUT_OF_MEMORY;\n";
+    Out << "        HTN_GENERATED_EXECUTION(context)->execution_info.last_error = \"Domain '" << EscapeCString(B.DomainId)
+        << "': unable to allocate an owning value or list node. If context.list_allocator is configured, increase its capacity and keep it alive until all results are released.\";\n";
+    Out << "    }\n    return result;\n}\n\n";
+    Out << "static int " << Prefix << "_COPY(const HTNGeneratedPlannerContext* context, HTNAtom* target, const HTNAtom* source, int assign)\n{\n";
+    Out << "    return " << Prefix << "_ALLOCATION_RESULT(context, assign ? HTNAtom_AssignCopyWithAllocator(target, source, context->list_allocator) : HTNAtom_CopyWithAllocator(target, source, context->list_allocator));\n}\n\n";
+    Out << "#define HTN_GENERATED_COPY(c, t, s) " << Prefix << "_COPY(c, t, s, 0)\n";
+    Out << "#define HTN_GENERATED_ASSIGN_COPY(c, t, s) " << Prefix << "_COPY(c, t, s, 1)\n";
+    Out << "#define HTN_GENERATED_ALLOCATION_RESULT(c, r) " << Prefix << "_ALLOCATION_RESULT(c, r)\n\n";
+
     Out << "static int " << Prefix << "_INITIALIZE_EXECUTION_STORAGE(void* raw_storage)\n{\n";
     Out << "    " << Prefix << "_EXECUTION_STORAGE* storage = (" << Prefix << "_EXECUTION_STORAGE*)raw_storage;\n";
     if (inBacktrackingPolicy == HTNGeneratedBacktrackingPolicy::FixedWithOverflow)
@@ -2056,6 +2076,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     Out << "    storage->execution_info.call_frame_size = sizeof(" << Prefix << "_CALL_FRAME);\n";
     Out << "    storage->execution_info.peak_call_frames = 0u;\n";
     Out << "    storage->execution_info.last_error = NULL;\n";
+    Out << "    { HTNBacktrackingAllocationStats empty = {0}; storage->execution_info.backtracking_allocations = empty; }\n";
     Out << "    storage->call_frame = NULL;\n";
     Out << "    storage->next_function = NULL;\n";
     Out << "    storage->variables.values = storage->variable_values;\n";
@@ -2224,7 +2245,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
             if (PreserveOutputArgument)
             {
                 Out << "    if (axiom_input_" << I << ") {\n";
-                Out << "        HTNAtom_Copy(&axiom_scope->argument_values[" << I << "u], axiom_input_" << I << ");\n";
+                Out << "        HTN_GENERATED_COPY(context, &axiom_scope->argument_values[" << I << "u], axiom_input_" << I << ");\n";
                 Out << "        axiom_scope->argument_bound[" << I << "u] = 1u;\n";
                 Out << "    }\n";
             }
@@ -2239,7 +2260,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
                     Out << "    HTNAtom axiom_input_copy_" << I << ";\n";
                     Out << "    int axiom_input_copied_" << I << " = 0;\n";
                     Out << "    if (axiom_input_" << I << ") {\n";
-                    Out << "        HTNAtom_Copy(&axiom_input_copy_" << I << ", axiom_input_" << I << ");\n";
+                    Out << "        HTN_GENERATED_COPY(context, &axiom_input_copy_" << I << ", axiom_input_" << I << ");\n";
                     Out << "        axiom_input_" << I << " = &axiom_input_copy_" << I << ";\n";
                     Out << "        axiom_input_copied_" << I << " = 1;\n";
                     Out << "    }\n";
@@ -2350,7 +2371,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
             for (const uint32 I : VariableOutputs)
             {
                 const ValueRecord& Parameter = B.Values[Axiom.FirstParameter + I];
-                Out << "        HTNAtom_Copy(&axiom_output_copy_" << I
+                Out << "        HTN_GENERATED_COPY(context, &axiom_output_copy_" << I
                     << ", HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, " << Parameter.VariableSlot << "u));\n";
                 Out << "        axiom_output_copied_" << I << " = 1;\n";
             }
@@ -2617,7 +2638,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
         }
         else
         {
-            Out << "        if (!storage->backtracking_overflow) { storage->backtracking_overflow = HTNGeneratedBacktracking_CreateOverflow(); if (!storage->backtracking_overflow) { storage->failure_state = HTN_DECOMPOSITION_OUT_OF_MEMORY; return 0; } }\n";
+            Out << "        if (!storage->backtracking_overflow) { storage->backtracking_overflow = HTNGeneratedBacktracking_CreateOverflowWithAllocator(context->backtracking_allocator, &storage->execution_info.backtracking_allocations); if (!storage->backtracking_overflow) { storage->failure_state = HTN_DECOMPOSITION_OUT_OF_MEMORY; return 0; } }\n";
             for (uint32 TI = 0u; TI < Branch.TaskCount; ++TI)
             {
                 const uint32 TaskIndex = Branch.FirstTask + (Branch.TaskCount - 1u - TI);
@@ -2627,7 +2648,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
                 for (const uint32 Slot : RestoreSlots)
                 {
                     Out << "        { const HTNAtom* snapshot_value = HTNGeneratedVariables_Get(&storage->variables, " << Slot << "u); "
-                        << "if (!HTNGeneratedBacktracking_PushContinuationSnapshotOverflow(storage->backtracking_overflow, " << Slot << "u, snapshot_value)) { ";
+                        << "if (!HTNGeneratedBacktracking_PushContinuationSnapshotOverflowWithAllocator(storage->backtracking_overflow, " << Slot << "u, snapshot_value, context->list_allocator)) { ";
                     W.Profile << "HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONTINUATION_TRAIL); ";
                     Out << "storage->failure_state = HTN_DECOMPOSITION_OUT_OF_MEMORY; ";
                     W.Profile << "HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_PENDING_PUSH); ";
@@ -2659,7 +2680,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
             {
                 Out << "        storage->snapshot_slots[storage->inline_snapshot_count] = " << Slot << "u;\n";
                 Out << "        { const HTNAtom* snapshot_value = HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, " << Slot << "u); "
-                    << "if (snapshot_value) HTNAtom_AssignCopy(&storage->snapshot_values[storage->inline_snapshot_count], snapshot_value); "
+                    << "if (snapshot_value) HTN_GENERATED_ASSIGN_COPY(context, &storage->snapshot_values[storage->inline_snapshot_count], snapshot_value); "
                     << "else HTNAtom_Unbind(&storage->snapshot_values[storage->inline_snapshot_count]); }\n";
                 Out << "        ++storage->inline_snapshot_count;\n";
             }
@@ -2754,6 +2775,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     Out << "        frame = storage->call_frame;\n";
     Out << "        result = frame->function(context, out_result);\n";
     Out << "        if (result == 2) {\n";
+    Out << "            if (storage->failure_state != HTN_DECOMPOSITION_NO_PLAN) { frame->child_result = 0; continue; }\n";
     Out << "            " << Prefix << "_CALL_FRAME* child;\n";
     Out << "            if (storage->call_frame_count == " << inCallFrameCapacity << "u) {\n";
     Out << "                storage->failure_state = HTN_DECOMPOSITION_CALL_FRAME_CAPACITY_EXCEEDED;\n";
@@ -2773,7 +2795,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     Out << "            if (storage->call_frame) storage->call_frame->child_result = result;\n";
     Out << "        }\n";
     Out << "    }\n";
-    Out << "    return result;\n}\n\n";
+    Out << "    return storage->failure_state == HTN_DECOMPOSITION_NO_PLAN ? result : 0;\n}\n\n";
 
     // A continuation executes one already-popped task. Compound continuations
     // only select/decompose their method and queue that method's children. The
@@ -2921,13 +2943,13 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
             W.DomainExpressionComment(Task.DomainExpression);
             Out << "    {\n";
             Out << "        HTNAtom plan_step;\n";
-            Out << "        if (!HTNAtom_CreateCallFromPointers(&plan_step, " << DomainSymbol << "_PREPARED(context)->symbols["
+            Out << "        if (!HTNAtom_CreateCallFromPointersWithAllocator(&plan_step, " << DomainSymbol << "_PREPARED(context)->symbols["
                 << Task.PlanStepHeadSymbolSlot << "u], ";
             if (Task.ArgumentCount > 0u)
                 Out << "plan_step_arguments, " << Task.ArgumentCount << "u";
             else
                 Out << "NULL, 0u";
-            Out << ")) {\n";
+            Out << ", context->list_allocator)) {\n";
             Out << "            HTN_GENERATED_EXECUTION(context)->failure_state = HTN_DECOMPOSITION_OUT_OF_MEMORY;\n";
             W.Debug << "            HTN_GENERATED_EVENT_DEBUG_END_TASK(context, &" << DomainSymbol << "_PLANNER_DEFINITION, 0);\n";
             W.Profile << "            HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_GENERATED_TASK);\n";
@@ -3007,7 +3029,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
 
                     CopiedArguments.push_back(ArgumentIndex);
                     Out << "    HTNAtom compound_argument_copy_" << ArgumentIndex << ";\n";
-                    Out << "    HTNAtom_Copy(&compound_argument_copy_" << ArgumentIndex << ", compound_argument_" << ArgumentIndex << ");\n";
+                    Out << "    HTN_GENERATED_COPY(context, &compound_argument_copy_" << ArgumentIndex << ", compound_argument_" << ArgumentIndex << ");\n";
                     Out << "    compound_argument_" << ArgumentIndex << " = &compound_argument_copy_" << ArgumentIndex << ";\n";
                 }
 
@@ -3142,7 +3164,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
             const size_t MethodSnapshotCount = MethodVariableSlots.size();
 
             Out << W.Label(BranchLabels[BI]) << ":\n";
-            Out << "    ;\n";
+            Out << "    if (HTN_GENERATED_EXECUTION(context)->failure_state != HTN_DECOMPOSITION_NO_PLAN) goto " << W.Label(MethodFailureLabel) << ";\n";
             if (CanRetryNextBranch)
             {
                 if (MethodSnapshotCount != 0u)
@@ -3155,7 +3177,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
                 {
                     const uint32 Slot = MethodVariableSlots[SnapshotIndex];
                     Out << "    { const HTNAtom* branch_retry_value = HTNGeneratedVariables_Get(&HTN_GENERATED_EXECUTION(context)->variables, " << Slot << "u);\n";
-                    Out << "      if (branch_retry_value) { if (!HTNAtom_AssignCopy(&frame->retry_values[" << SnapshotIndex << "u], branch_retry_value)) { HTNAtom_DestroyRange(frame->retry_values, " << MethodSnapshotCount << "u); HTN_GENERATED_EXECUTION(context)->failure_state = HTN_DECOMPOSITION_OUT_OF_MEMORY; ";
+                    Out << "      if (branch_retry_value) { if (!HTN_GENERATED_ASSIGN_COPY(context, &frame->retry_values[" << SnapshotIndex << "u], branch_retry_value)) { HTNAtom_DestroyRange(frame->retry_values, " << MethodSnapshotCount << "u); HTN_GENERATED_EXECUTION(context)->failure_state = HTN_DECOMPOSITION_OUT_OF_MEMORY; ";
                     W.Debug << "HTN_GENERATED_EVENT_DEBUG_END_METHOD(context, &" << DomainSymbol << "_PLANNER_DEFINITION, 0); ";
                     W.Profile << "HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_GENERATED_METHOD); ";
                     Out << "return 0; } frame->retry_bound[" << SnapshotIndex << "u] = 1u; } }\n";
@@ -3179,6 +3201,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
             Out << "    goto " << W.Label(BranchFailure) << ";\n\n";
 
             Out << W.Label(BranchSuccess) << ":\n";
+            Out << "    if (HTN_GENERATED_EXECUTION(context)->failure_state != HTN_DECOMPOSITION_NO_PLAN) goto " << W.Label(BranchFailedDebug) << ";\n";
             W.Profile << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_BRANCH_CONDITION_CFG);\n";
             W.Profile << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_BRANCH_TASK_SCHEDULING);\n";
             if (Branch.TaskCount != 0u)
@@ -3276,8 +3299,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
         Out << "}\n\n";
     }
 
-    Out << "#ifdef __cplusplus\nextern \"C\"\n#endif\n";
-    Out << "HTNDecompositionStatus " << EntryPointName << "(const HTNGeneratedPlannerContext* context, const HTNAtom* call, int require_top_level, HTNAtom* out_result)\n{\n";
+    Out << "static HTNDecompositionStatus " << Prefix << "_DECOMPOSE(const HTNGeneratedPlannerContext* context, const HTNAtom* call, int require_top_level, HTNAtom* out_result)\n{\n";
     Out << "    HTNGeneratedTaskContinuationFn pending_continuation = 0;\n";
     Out << "    int result = 0;\n";
     Out << "    uint32_t entry_method = HTN_NO_INDEX;\n";
@@ -3288,7 +3310,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     Out << "    uint32_t call_argument_count = 0u;\n";
     Out << "    if (!out_result) return HTN_DECOMPOSITION_INVALID_CONTEXT;\n";
     Out << "    HTNAtom_Init(out_result);\n";
-    Out << "    HTNAtom_SetEmptyList(out_result);\n";
+    Out << "    HTNAtom_SetEmptyListWithAllocator(out_result, context ? context->list_allocator : NULL);\n";
     Out << "    (void)out_result;\n";
     Out << "    (void)require_top_level;\n";
     Out << "    if (!context || !context->execution_storage || !context->prepared_storage) return HTN_DECOMPOSITION_INVALID_CONTEXT;\n";
@@ -3457,6 +3479,49 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     Out << "}\n\n";
 
     Out << "#ifdef __cplusplus\nextern \"C\"\n#endif\n";
+    Out << "HTNDecompositionStatus " << EntryPointName << "(const HTNGeneratedPlannerContext* context, const HTNAtom* call, int require_top_level, HTNAtom* out_result)\n{\n";
+    Out << "    HTNDecompositionStatus status;\n";
+    Out << "    if (context && context->execution_storage) {\n";
+    Out << "        " << Prefix << "_EXECUTION_STORAGE* storage = HTN_GENERATED_EXECUTION(context);\n";
+    if (inBacktrackingPolicy == HTNGeneratedBacktrackingPolicy::FixedWithOverflow)
+        Out << "        HTNGeneratedBacktracking_BeginDecomposition(&storage->backtracking_overflow, context->backtracking_allocator, &storage->execution_info.backtracking_allocations);\n";
+    else
+        Out << "        { HTNBacktrackingAllocationStats empty = {0}; storage->execution_info.backtracking_allocations = empty; }\n";
+    Out << "        storage->execution_info.peak_call_frames = 0u;\n";
+    Out << "        storage->execution_info.last_error = NULL;\n";
+    Out << "        if (context->backtracking_allocator && (!context->backtracking_allocator->allocate || !context->backtracking_allocator->deallocate)) {\n";
+    Out << "            storage->execution_info.last_error = \"context.backtracking_allocator requires both allocate and deallocate callbacks.\";\n";
+    Out << "            if (out_result) HTNAtom_Init(out_result);\n";
+    Out << "            return HTN_DECOMPOSITION_INVALID_CONTEXT;\n";
+    Out << "        }\n    }\n";
+    Out << "    status = " << Prefix << "_DECOMPOSE(context, call, require_top_level, out_result);\n";
+    Out << "    if (context && context->execution_storage) {\n";
+    Out << "        " << Prefix << "_EXECUTION_STORAGE* storage = HTN_GENERATED_EXECUTION(context);\n";
+    Out << "        if (status == HTN_DECOMPOSITION_OUT_OF_MEMORY) " << Prefix << "_ALLOCATION_RESULT(context, 0);\n";
+    Out << "        if (storage->execution_info.backtracking_allocations.failed_allocation_count != 0u)\n";
+    Out << "            storage->execution_info.last_error = \"Domain '" << EscapeCString(B.DomainId)
+        << "': unable to allocate backtracking overflow. Check context.backtracking_allocator capacity/alignment and execution_info.backtracking_allocations for requested bytes and failed allocations.\";\n";
+    Out << "        if (context->list_allocator || context->backtracking_allocator) {\n";
+    Out << "            HTNAtom_DestroyRange(storage->variable_values, " << GeneratedVariableCount << "u);\n";
+    Out << "            HTNAtom_DestroyRange(storage->snapshot_values, " << GeneratedSnapshotCapacity << "u);\n";
+    Out << "            { uint32_t i; for (i = 0; i < " << GeneratedBoundMaskWordCount << "u; ++i) storage->variable_bound_mask[i] = UINT64_C(0); }\n";
+    if (inBacktrackingPolicy == HTNGeneratedBacktrackingPolicy::FixedWithOverflow)
+    {
+        Out << "            HTNGeneratedBacktracking_ResetOverflow(storage->backtracking_overflow);\n";
+        Out << "            storage->overflow_pending_count = 0u;\n";
+    }
+    Out << "            storage->inline_snapshot_count = storage->inline_pending_count = storage->total_pending_count = 0u;\n";
+    Out << "            if (status != HTN_DECOMPOSITION_SUCCEEDED && out_result) HTNAtom_Unbind(out_result);\n";
+    Out << "        }\n";
+    if (inBacktrackingPolicy == HTNGeneratedBacktrackingPolicy::FixedWithOverflow)
+    {
+        Out << "        if (context->backtracking_allocator) {\n";
+        Out << "            HTNGeneratedBacktracking_DestroyOverflow(storage->backtracking_overflow);\n";
+        Out << "            storage->backtracking_overflow = NULL;\n";
+        Out << "        }\n";
+    }
+    Out << "    }\n    return status;\n}\n\n";
+    Out << "#ifdef __cplusplus\nextern \"C\"\n#endif\n";
     Out << "HTN_GENERATED_MODULE_EXPORT const HTNGeneratedPlannerDefinition* " << EntryPointName << "_GetDefinition(void)\n{\n";
     Out << "    return &" << DomainSymbol << "_PLANNER_DEFINITION;\n";
     Out << "}\n\n";
@@ -3467,7 +3532,7 @@ std::string MakeSource(const HTNCompilerIR& B, const std::string& Prefix, const 
     W.Profile << "#undef HTN_GENERATED_STRUCTURAL_COUNTERS\n";
     W.Profile << "#endif\n";
     W.Debug << "#undef HTN_GENERATED_VARIABLES\n";
-    Out << "#undef HTN_GENERATED_EXECUTION\n\n";
+    Out << "#undef HTN_GENERATED_EXECUTION\n#undef HTN_GENERATED_COPY\n#undef HTN_GENERATED_ASSIGN_COPY\n#undef HTN_GENERATED_ALLOCATION_RESULT\n\n";
 
     Out << "#if defined(_MSC_VER)\n";
     Out << "#pragma warning(pop)\n";

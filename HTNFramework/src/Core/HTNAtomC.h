@@ -124,6 +124,8 @@ uint32_t HTNAtomList_GetSize(const HTNAtomList* inList);
 int HTNAtomList_IsEmpty(const HTNAtomList* inList);
 int HTNAtomList_Split(const HTNAtomList* inList, HTNAtomListSplitDirection inDirection,
                       HTNAtom* outElement, HTNAtom* outRemainder);
+int HTNAtomList_SplitWithAllocator(const HTNAtomList* inList, HTNAtomListSplitDirection inDirection,
+                                   HTNAtom* outElement, HTNAtom* outRemainder, void* inAllocator);
 void HTNAtom_Init(HTNAtom* ioAtom);
 /* Creates an owning call atom: (head arg0 ... argN). outAtom must not contain a
  * live atom on entry. Arguments are deep-copied and remain caller-owned. On
@@ -132,13 +134,22 @@ int  HTNAtom_CreateCall(HTNAtom* outAtom, const void* inHeadSymbol, const HTNAto
 /* Same ownership semantics as HTNAtom_CreateCall, but accepts borrowed argument
  * pointers so generated code can append values directly from variable/prepared storage. */
 int  HTNAtom_CreateCallFromPointers(HTNAtom* outAtom, const void* inHeadSymbol, const HTNAtom* const* inArguments, uint32_t inArgumentCount);
+int  HTNAtom_CreateCallFromPointersWithAllocator(HTNAtom* outAtom, const void* inHeadSymbol,
+                                                const HTNAtom* const* inArguments, uint32_t inArgumentCount, void* inAllocator);
 void HTNAtom_SetEmptyList(HTNAtom* ioAtom);
+void HTNAtom_SetEmptyListWithAllocator(HTNAtom* ioAtom, void* inAllocator);
 void HTNAtom_Destroy(HTNAtom* ioAtom);
 /* Construct-style copy/move. outAtom must not contain a live atom on entry.
  * Copy failure leaves outAtom initialized, unbound and destroyable. */
 int  HTNAtom_Copy(HTNAtom* outAtom, const HTNAtom* inAtom);
 void HTNAtom_Move(HTNAtom* outAtom, HTNAtom* inAtom);
 int  HTNAtom_AssignCopy(HTNAtom* ioAtom, const HTNAtom* inAtom);
+/* Deep copies allocate every new list node (including nested lists) with the
+ * borrowed HTNAtomListAllocator. NULL preserves the existing source-allocator
+ * copy policy. Moves always carry the original allocator with their nodes.
+ * Failure leaves the destination unbound; sources and their owners are unchanged. */
+int  HTNAtom_CopyWithAllocator(HTNAtom* outAtom, const HTNAtom* inAtom, void* inAllocator);
+int  HTNAtom_AssignCopyWithAllocator(HTNAtom* ioAtom, const HTNAtom* inAtom, void* inAllocator);
 void HTNAtom_AssignMove(HTNAtom* ioAtom, HTNAtom* inAtom);
 void HTNAtom_InitRange(HTNAtom* ioAtoms, uint32_t inCount);
 void HTNAtom_DestroyRange(HTNAtom* ioAtoms, uint32_t inCount);

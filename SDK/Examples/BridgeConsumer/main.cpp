@@ -2,6 +2,7 @@
 
 #include "HTNPlanner.h"
 #include "Translator/HTNRuntimeBridge.h"
+#include "Core/HTNAtomListAllocator.h"
 #include <cstdio>
 #include <cstring>
 
@@ -42,6 +43,7 @@ extern "C" const HTNGeneratedPlannerDefinition* CreatePackageCoreConsumerHTN_Get
 
 static bool RunCoverage(GetDefinitionFn inGet)
 {
+    HTNSafePooledAtomListAllocator Allocator(4, HTNNewDeleteAtomListAllocator::Get());
     const auto* Definition = inGet();
     if (!HTNGeneratedPlanner_ValidateDefinition(Definition)) return false;
     HTNFactRegistry Facts;
@@ -78,6 +80,7 @@ static bool RunCoverage(GetDefinitionFn inGet)
         Context.backtracking_mode = HTN_BACKTRACKING_ALL;
         Context.prepared_storage = Prepared;
         Context.execution_storage = Execution;
+        Context.list_allocator = &Allocator;
 #ifdef HTN_DEBUG_DECOMPOSITION
         HTNGeneratedDebugger Debugger;
         Debugger.SetEnabled(true);
@@ -86,7 +89,8 @@ static bool RunCoverage(GetDefinitionFn inGet)
         HTNAtomOwner Call(HTNAtom::sCreateCall(HtnSymbol::sGetSymbol("run")));
         HTNAtomOwner Plan;
         Valid = Definition->decompose_call(&Context, Call.Get(), 1, Plan.Get()) == HTN_DECOMPOSITION_SUCCEEDED &&
-            HTNAtom_GetListSize(Plan.Get()) == 3 && Calls == 1;
+            HTNAtom_GetListSize(Plan.Get()) == 3 && Calls == 1 &&
+            Plan.Get()->value.list_value.allocator == &Allocator && Allocator.GetFallbackNodeCount() > 0;
         if (Valid)
         {
             const auto* Values = HTNAtom_GetListElement(Plan.Get(), 1);
@@ -123,7 +127,7 @@ static bool RunCoverage(GetDefinitionFn inGet)
     if (PreparedReady) Definition->destroy_prepared_storage(Prepared);
     ::operator delete(Execution);
     ::operator delete(Prepared);
-    return Valid;
+    return Valid && Allocator.GetPooledNodeCount() == 0 && Allocator.GetFallbackNodeCount() == 0;
 }
 
 int main(int argc, char** argv)
@@ -144,7 +148,7 @@ int main(int argc, char** argv)
 #undef CHECK_EXPORT
     HTNHostRuntimeAPI api = HTNCreateHostRuntimeAPI();
     HTNHostRuntimeAPI invalid = api;
-    invalid.abi_version ^= 1;
+    invalid.abi_version -= 1u;
     if (bind(&invalid) || !bind(&api)) { CloseModule(bridge); return 13; }
     ModuleHandle domain = OpenModule(argv[1]);
     if (!domain) { CloseModule(bridge); return 14; }

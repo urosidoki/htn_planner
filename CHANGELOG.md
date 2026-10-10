@@ -5,6 +5,18 @@ exceptions are called out explicitly in each release.
 
 ## 2.4.0 - Unreleased
 
+- Add optional per-instance allocators for owning atom lists and backtracking
+  overflow, with no global allocator selection. Null preserves default policies.
+- Add `HTNSafePooledAtomListAllocator`: a fixed pool with a borrowed fallback,
+  defaulting to new/delete. Every node is released through its originating allocator.
+- Release custom backtracking containers before every decomposition returns,
+  including failures. The client exclusively owns scratch reset/marker restoration;
+  retained plan/list values have a separate allocator lifetime.
+- Expose backtracking bytes, peak usage, allocation counts and failures through
+  execution info, without requiring profiling or debugger instrumentation.
+- Cover allocation failure, cleanup, backtracking, deferred calls, retained plans,
+  independent concurrent instances and previous-domain ABI rejection.
+
 - Bare `true` and `false` are ordinary symbols in domains and `.worldstate` files.
   Use `0`/`1` or explicitly declared `@true`/`@false` constants for boolean data.
   Migrate old boolean literals and regenerate domains before upgrading.
@@ -23,9 +35,10 @@ exceptions are called out explicitly in each release.
   `ClearFact` and `RemoveAllFacts` clear the captured rows alongside normal facts.
 - Cover zero/nonzero arities, query isolation, failed conversion, registry changes,
   cleanup and instrumented SDK consumers. Plain builds retain their existing behavior.
-- **Compatibility:** the instrumented C++ `HTNWorldState` layout changes; rebuild
-  clients and use matching 2.4.0 headers/libraries. The C runtime ABI, generated
-  domain format and atom layout are unchanged. No new SDK variants are introduced.
+- **Compatibility:** the generated context/execution-info and runtime bridge ABIs
+  change; regenerate domains and rebuild all hosts and modules together. Older
+  domains are rejected. The instrumented C++ `HTNWorldState` layout also changes.
+  Atom/list layouts are unchanged; no new SDK variants are introduced.
 - See [2.4.0 release notes and validation status](docs/RELEASE_2_4_0.md).
 
 ## 2.3.0 - 2026-10-04

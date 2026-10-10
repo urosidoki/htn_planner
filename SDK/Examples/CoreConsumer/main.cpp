@@ -2,11 +2,39 @@
 
 #include "HTNPlanner.h"
 #include "Core/HTNPlannerExecutionContext.h"
+#include "Core/HTNAtomListAllocator.h"
 
 #include <cstdio>
+#include <array>
+#include <cstddef>
+#include <cstring>
+#include <memory>
 #include <new>
 
 extern "C" const HTNGeneratedPlannerDefinition* CreatePackageCoreConsumerHTN_GetDefinition(void);
+
+// The client owns the marker. Deallocate only tracks releases; it does not reset
+// the arena. This also exercises callbacks across the dynamic-domain bridge.
+struct PackageBacktrackingScratch
+{
+    alignas(std::max_align_t) std::array<std::byte, 128 * 1024> Buffer;
+    size_t Used = 0, Allocations = 0, Releases = 0, RequestedBytes = 0;
+    static void* Allocate(void* inUser, size_t inSize, size_t inAlignment)
+    {
+        auto& Self = *static_cast<PackageBacktrackingScratch*>(inUser);
+        void* Memory = Self.Buffer.data() + Self.Used;
+        size_t Space = Self.Buffer.size() - Self.Used;
+        if (!std::align(inAlignment, inSize, Memory, Space)) return nullptr;
+        Self.Used = static_cast<std::byte*>(Memory) - Self.Buffer.data() + inSize;
+        Self.RequestedBytes += inSize;
+        ++Self.Allocations;
+        return Memory;
+    }
+    static void Deallocate(void* inUser, void*, size_t, size_t)
+    {
+        ++static_cast<PackageBacktrackingScratch*>(inUser)->Releases;
+    }
+};
 
 struct PackageFactValue { int32 Value; bool Fail; };
 template<> struct HTNTypeTraits<PackageFactValue> : HTNTypeTraits<int32> {};
@@ -226,6 +254,43 @@ int main()
 
     if (!Valid)
         return Finish(4);
+
+    // Minimal per-instance pool example; the plan is destroyed before its pool.
+    {
+        HTNPooledAtomListAllocator Pool(256);
+        HTNGeneratedPlannerContext PooledContext = Context;
+        PooledContext.list_allocator = &Pool;
+        {
+            HTNAtomOwner PooledCall(HTNAtom::sCreateCall(HtnSymbol::sGetSymbol("run")));
+            HTNAtomOwner PooledPlan;
+            if (Definition->decompose_call(&PooledContext, PooledCall.Get(), 1, PooledPlan.Get()) != HTN_DECOMPOSITION_SUCCEEDED ||
+                PooledPlan.Get()->value.list_value.allocator != &Pool || Pool.GetAllocatedNodeCount() == 0)
+                return Finish(17);
+        }
+        if (Pool.GetAllocatedNodeCount() != 0) return Finish(18);
+    }
+    std::puts("Per-instance fixed list allocator: PASS");
+
+    {
+        PackageBacktrackingScratch Scratch;
+        HTNBacktrackingAllocator Backtracking{
+            &Scratch, PackageBacktrackingScratch::Allocate, PackageBacktrackingScratch::Deallocate};
+        HTNGeneratedPlannerContext ScratchContext = Context;
+        ScratchContext.backtracking_allocator = &Backtracking;
+        HTNAtomOwner ScratchCall(HTNAtom::sCreateCall(HtnSymbol::sGetSymbol("run_backtracking"), 80));
+        HTNAtomOwner RetainedPlan;
+        if (Definition->decompose_call(&ScratchContext, ScratchCall.Get(), 1, RetainedPlan.Get()) != HTN_DECOMPOSITION_SUCCEEDED)
+            return Finish(19);
+        const auto Stats = Definition->get_execution_info(ExecutionStorage)->backtracking_allocations;
+        if (Stats.allocation_count == 0 || Stats.allocation_count != Scratch.Allocations ||
+            Scratch.Releases != Scratch.Allocations || Stats.current_bytes != 0 ||
+            Stats.peak_bytes != Scratch.RequestedBytes || Stats.failed_allocation_count != 0) return Finish(20);
+        // Only the client resets the scratch, after checking the retained metrics.
+        std::memset(Scratch.Buffer.data(), 0xcd, Scratch.Used);
+        Scratch.Used = 0;
+        if (RetainedPlan.GetListSize() != 161) return Finish(21);
+    }
+    std::puts("Backtracking scratch allocator and retained usage statistics: PASS");
 
     MissingReport Report;
     Context.client_context = &Report;

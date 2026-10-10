@@ -244,6 +244,12 @@ extern "C" int HTNAtomList_IsEmpty(const HTNAtomList* inList)
 extern "C" int HTNAtomList_Split(const HTNAtomList* inList, const HTNAtomListSplitDirection inDirection,
                                    HTNAtom* outElement, HTNAtom* outRemainder)
 {
+    return HTNAtomList_SplitWithAllocator(inList, inDirection, outElement, outRemainder, nullptr);
+}
+
+extern "C" int HTNAtomList_SplitWithAllocator(const HTNAtomList* inList, const HTNAtomListSplitDirection inDirection,
+    HTNAtom* outElement, HTNAtom* outRemainder, void* inAllocator)
+{
     if (!inList || !outElement || !outRemainder || outElement == outRemainder || inList->size == 0u)
         return 0;
     if (inDirection != HTN_ATOM_LIST_SPLIT_FRONT && inDirection != HTN_ATOM_LIST_SPLIT_BACK)
@@ -257,10 +263,10 @@ extern "C" int HTNAtomList_Split(const HTNAtomList* inList, const HTNAtomListSpl
     HTNAtom ElementCopy;
     HTNAtom Remainder;
     HTNAtom_Init(&Remainder);
-    HTNAtomList_InitWithAllocator(&Remainder.value.list_value, inList->allocator);
+    HTNAtomList_InitWithAllocator(&Remainder.value.list_value, inAllocator ? inAllocator : inList->allocator);
     Remainder.type = HTN_ATOM_TYPE_LIST;
 
-    if (!HTNAtom_Copy(&ElementCopy, Element))
+    if (!HTNAtom_CopyWithAllocator(&ElementCopy, Element, inAllocator))
     {
         HTNAtom_Destroy(&ElementCopy);
         HTNAtom_Destroy(&Remainder);
@@ -272,7 +278,12 @@ extern "C" int HTNAtomList_Split(const HTNAtomList* inList, const HTNAtomListSpl
         if (Index == ElementIndex)
             continue;
         const HTNAtom* Value = HTNAtomList_Get(inList, Index);
-        if (!Value || !HTNAtom_PushBackListElement(&Remainder, Value))
+        HTNAtom Copy;
+        HTNAtom_Init(&Copy);
+        const bool Valid = Value && HTNAtom_CopyWithAllocator(&Copy, Value, inAllocator) &&
+            HTNAtom_PushBackListElementMove(&Remainder, &Copy);
+        HTNAtom_Destroy(&Copy);
+        if (!Valid)
         {
             HTNAtom_Destroy(&ElementCopy);
             HTNAtom_Destroy(&Remainder);

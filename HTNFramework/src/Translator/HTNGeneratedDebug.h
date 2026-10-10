@@ -190,7 +190,7 @@ struct HTNGeneratedDebugMetadata
 
 #ifdef HTN_DEBUG_DECOMPOSITION
 /* Standalone generated event debugger. It consumes generated metadata only. */
-void HTNGeneratedEventDebug_BeginPlan(HTNGeneratedDebugger* debugger, const HTNGeneratedVariableStorage* variables, const HTNGeneratedPlannerDefinition* domain, uint32_t entry_method);
+void HTNGeneratedEventDebug_BeginPlan(HTNGeneratedDebugger* debugger, const HTNGeneratedVariableStorage* variables, const HTNGeneratedPlannerDefinition* domain, uint32_t entry_method, int independent_lists);
 void HTNGeneratedEventDebug_EndPlan(HTNGeneratedDebugger* debugger, const HTNGeneratedVariableStorage* variables, const HTNGeneratedPlannerDefinition* domain, int result);
 void HTNGeneratedEventDebug_BeginMethod(HTNGeneratedDebugger* debugger, const HTNGeneratedVariableStorage* variables, const HTNGeneratedPlannerDefinition* domain, uint32_t method_index);
 void HTNGeneratedEventDebug_EndMethod(HTNGeneratedDebugger* debugger, const HTNGeneratedVariableStorage* variables, const HTNGeneratedPlannerDefinition* domain, int result);
@@ -207,7 +207,7 @@ void HTNGeneratedEventDebug_EndAxiom(HTNGeneratedDebugger* debugger, const HTNGe
 #endif
 
 #ifdef HTN_DEBUG_DECOMPOSITION
-#  define HTN_GENERATED_EVENT_DEBUG_BEGIN_PLAN(context, domain, entry_method) HTNGeneratedEventDebug_BeginPlan((context)->debugger, HTN_GENERATED_VARIABLES(context), (domain), (entry_method))
+#  define HTN_GENERATED_EVENT_DEBUG_BEGIN_PLAN(context, domain, entry_method) HTNGeneratedEventDebug_BeginPlan((context)->debugger, HTN_GENERATED_VARIABLES(context), (domain), (entry_method), (context)->list_allocator != NULL)
 #  define HTN_GENERATED_EVENT_DEBUG_END_PLAN(context, domain, result) HTNGeneratedEventDebug_EndPlan((context)->debugger, HTN_GENERATED_VARIABLES(context), (domain), (result))
 #  define HTN_GENERATED_EVENT_DEBUG_BEGIN_METHOD(context, domain, method_index) HTNGeneratedEventDebug_BeginMethod((context)->debugger, HTN_GENERATED_VARIABLES(context), (domain), (method_index))
 #  define HTN_GENERATED_EVENT_DEBUG_END_METHOD(context, domain, result) HTNGeneratedEventDebug_EndMethod((context)->debugger, HTN_GENERATED_VARIABLES(context), (domain), (result))

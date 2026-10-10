@@ -1321,7 +1321,7 @@ TEST(HTNGeneratedTopLevelCallTest, GeneratorBindsTopLevelArgumentsFromCallAtom)
     EXPECT_NE(Generated.find("HTNAtom_GetListElement(call, 1u)"), std::string::npos);
     EXPECT_NE(Generated.find("HTNAtom_GetListElement(call, 2u)"), std::string::npos);
     EXPECT_NE(Generated.find("HTNAtom_GetListElement(call, 3u)"), std::string::npos);
-    EXPECT_NE(Generated.find("HTNAtom_AssignCopy(&HTN_GENERATED_EXECUTION(context)->variables.values["), std::string::npos);
+    EXPECT_NE(Generated.find("HTN_GENERATED_ASSIGN_COPY(context, &HTN_GENERATED_EXECUTION(context)->variables.values["), std::string::npos);
     EXPECT_NE(Generated.find("HTNAtom_CreateCallFromPointers"), std::string::npos);
     EXPECT_NE(Generated.find("HTNAtom_PushBackListElementMove(out_result, &plan_step)"), std::string::npos);
     EXPECT_EQ(Generated.find("HTNAtom_PushBackListElement(out_result, &plan_step)"), std::string::npos);

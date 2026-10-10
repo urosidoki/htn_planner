@@ -39,7 +39,8 @@ class HTNAtomListAllocator
 public:
     virtual ~HTNAtomListAllocator() = default;
 
-    // Allocates raw node storage. HTNAtomList owns construction/destruction of node data.
+    // Allocate returns raw node storage; the list initializes its data. Deallocate
+    // must destroy node data (including nested atoms) before releasing the storage.
     HTN_NODISCARD virtual HTNAtomNode* Allocate() = 0;
     virtual void Deallocate(HTNAtomNode* inNode) = 0;
 };
@@ -75,6 +76,7 @@ public:
     HTN_NODISCARD uint32 GetCapacity() const;
     HTN_NODISCARD uint32 GetAvailableNodeCount() const;
     HTN_NODISCARD uint32 GetAllocatedNodeCount() const;
+    HTN_NODISCARD bool Owns(const HTNAtomNode* inNode) const;
 
 private:
     static constexpr uint32 InvalidSlot = std::numeric_limits<uint32>::max();
@@ -89,4 +91,33 @@ private:
     std::vector<Slot> mSlots;
     uint32            mFirstFree          = InvalidSlot;
     uint32            mAllocatedNodeCount = 0;
+};
+
+/** Pool with an explicitly borrowed fallback. Nodes retain their originating
+ * allocator; exhaustion fails only when the fallback also returns nullptr.
+ * Neither this allocator nor HTNPooledAtomListAllocator synchronizes access.
+ * Both this object and its fallback must outlive every list referencing them. */
+class HTNSafePooledAtomListAllocator final : public HTNAtomListAllocator
+{
+public:
+    explicit HTNSafePooledAtomListAllocator(uint32 inCapacity,
+        HTNAtomListAllocator& inFallback = HTNNewDeleteAtomListAllocator::Get());
+    ~HTNSafePooledAtomListAllocator() final;
+
+    HTNSafePooledAtomListAllocator(const HTNSafePooledAtomListAllocator&) = delete;
+    HTNSafePooledAtomListAllocator& operator=(const HTNSafePooledAtomListAllocator&) = delete;
+    HTNSafePooledAtomListAllocator(HTNSafePooledAtomListAllocator&&) = delete;
+    HTNSafePooledAtomListAllocator& operator=(HTNSafePooledAtomListAllocator&&) = delete;
+
+    HTN_NODISCARD HTNAtomNode* Allocate() final;
+    void Deallocate(HTNAtomNode* inNode) final;
+
+    HTN_NODISCARD uint32 GetCapacity() const { return mPool.GetCapacity(); }
+    HTN_NODISCARD uint32 GetPooledNodeCount() const { return mPool.GetAllocatedNodeCount(); }
+    HTN_NODISCARD uint32 GetFallbackNodeCount() const { return mFallbackNodeCount; }
+
+private:
+    HTNPooledAtomListAllocator mPool;
+    HTNAtomListAllocator& mFallback;
+    uint32 mFallbackNodeCount = 0;
 };

@@ -5,6 +5,7 @@
 #ifdef HTN_DEBUG_DECOMPOSITION
 
 #include "Core/HTNAtom.h"
+#include "Core/HTNAtomListAllocator.h"
 #include "Core/HTNDomainSyntax.h"
 #include "Translator/HTNGeneratedDebug.h"
 
@@ -125,8 +126,9 @@ public:
         return inEventNodeId < mNodes.size() ? &mNodes[inEventNodeId] : nullptr;
     }
 
-    void BeginPlan(const HTNGeneratedPlannerDefinition* inDomain, const std::uint32_t inMethodIndex, const HTNAtom* inValues = nullptr, const std::uint64_t* inBoundMask = nullptr, const std::uint32_t inSlotCount = 0u)
+    void BeginPlan(const HTNGeneratedPlannerDefinition* inDomain, const std::uint32_t inMethodIndex, const HTNAtom* inValues = nullptr, const std::uint64_t* inBoundMask = nullptr, const std::uint32_t inSlotCount = 0u, const bool inIndependentLists = false)
     {
+        mIndependentLists = inIndependentLists;
         if (!mEnabled || !inDomain || !inDomain->debug_metadata || inMethodIndex >= inDomain->debug_metadata->method_count) return;
         const HTNGeneratedDebugMethod& DebugMethod = inDomain->debug_metadata->methods[inMethodIndex];
         BeginNode(NodeKind::Plan, inMethodIndex, DebugMethod.source_line, ResolveString(inDomain, DebugMethod.id, "plan"));
@@ -773,7 +775,10 @@ private:
             Node::VariableValue Variable;
             Variable.Slot = Slot;
             Variable.Name = ResolveString(inDomain, inDomain->debug_metadata->variable_string_ids[Slot], "?");
-            Variable.Value = inValues[Slot];
+            // Debug history outlives decomposition and must not consume a bounded
+            // execution pool or retain the client's allocator through snapshots.
+            HTNAtom_AssignCopyWithAllocator(Variable.Value.Get(), &inValues[Slot],
+                mIndependentLists ? &HTNNewDeleteAtomListAllocator::Get() : nullptr);
             Out.emplace_back(std::move(Variable));
         }
     }
@@ -794,6 +799,7 @@ private:
     struct PendingTask { std::uint32_t MetadataIndex = HTN_GENERATED_NO_INDEX; std::uint32_t ParentEventNodeId = HTN_GENERATED_NO_INDEX; };
 
     bool mEnabled = false;
+    bool mIndependentLists = false;
     std::string mDomainPath;
     std::vector<Node> mNodes;
     std::vector<std::uint32_t> mOpenNodes;

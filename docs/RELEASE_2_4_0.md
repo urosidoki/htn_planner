@@ -3,6 +3,56 @@
 Status: **Release preparation; not published.**
 Distribution targets: Windows x86_64 and Ubuntu 24.04 x86_64.
 
+## Per-instance list and backtracking allocators
+
+`HTNGeneratedPlannerContext` now accepts two optional borrowed services:
+
+| Member | Purpose | Required lifetime |
+| --- | --- | --- |
+| `list_allocator` | Owning list nodes, runtime list expressions, copies, list-operation results and returned plans | Until all referencing values and execution storage are destroyed, including plans retained after decomposition |
+| `backtracking_allocator` | Overflow containers for pending continuations and variable snapshots | The synchronous decomposition call; all custom blocks are released before return |
+
+HTNIntegration exposes the same services as `ListAllocator` and
+`BacktrackingAllocator` in `HTNPlannerExecutionContext`. Different planners may
+use independent allocators concurrently; shared allocators need client coordination.
+Null retains the existing policies, including reusable default backtracking blocks.
+Prepared data and fixed execution scratch remain in their existing storage.
+
+- `HTNSafePooledAtomListAllocator` falls back to a borrowed allocator when its fixed
+  pool is exhausted, defaulting to `HTNNewDeleteAtomListAllocator`. Nodes always
+  return to their allocator of origin; moves preserve ownership.
+- A backtracking arena may use no-op deallocation. **Only the client resets scratch
+  or restores its marker**, after decomposition returns. Returned plans remain
+  independently owned. Never reset a list allocator while a referencing value lives.
+- Allocation failures return `HTN_DECOMPOSITION_OUT_OF_MEMORY` and clean up partial
+  results. Backtracking allocation has no implicit heap fallback; callbacks may
+  implement one explicitly. Callbacks must not throw.
+- `execution_info.backtracking_allocations` reports current/peak/requested bytes,
+  largest request, alignment and successful/failed allocation counts. Statistics
+  reset per call and remain available afterwards, without profiling flags.
+  `HTNPlanningUnit::GetGeneratedExecutionInfo()` exposes them to integration clients.
+  Counts describe requested container bytes; the arena's own high-water mark also
+  includes allocator padding and bookkeeping.
+
+See [list allocation and ownership](INSTANCE_LIST_ALLOCATOR.md) and
+[backtracking scratch allocation](BACKTRACKING_ALLOCATOR.md) for examples, failure
+behavior, deferred calls and detailed lifetime contracts.
+
+## Release-wide ABI migration
+
+**This release changes the generated C ABI and runtime bridge ABI.** Regenerate
+every domain and rebuild the host, libraries, bridge and domain modules together.
+Do not mix headers/libraries from an earlier 2.4.0 candidate. Previous generated
+definitions and bridge tables are rejected before execution.
+
+- Planner ABI revision: **9** for plain/profiling, **11** with decomposition debugging.
+- Runtime bridge ABI revision: **10** in all variants.
+- `HTNAtom`/list representation and existing status values are unchanged.
+- Zero-initialize contexts; leave both allocator pointers null for default behavior.
+
+The feature-specific compatibility notes below describe the boolean and
+unregistered-fact changes alone; they do not supersede this release-wide migration.
+
 ## Unregistered world-state facts in instrumented builds
 
 When `HTN_DEBUG_DECOMPOSITION` is defined, `WriteFact` and
@@ -64,11 +114,10 @@ types until rebuilt.
   Atom text formatting, the planner debugger and Visual Studio natvis display
   BOOL as `0`/`1`, also inside lists, without changing the stored type. Symbols
   named `true`/`false` keep their names.
-- The atom layout, generated format and C runtime ABI are unchanged. Rebuild
-  runtime libraries and C++ consumers together to use the new equality and
-  conversion rules. Regenerate and rebuild domains for the new literal semantics
-  and constant comparison rules. Older modules remain ABI-compatible but cannot
-  acquire these compile-time changes solely by updating the runtime library.
+- The boolean changes alone preserve atom layout and the C ABI. Regenerate
+  domains for the new literal semantics and constant comparison rules. The
+  allocator changes in this release additionally require the ABI migration
+  above; older modules cannot be reused with this SDK.
 - This expands matching: facts previously distinguished only by BOOL versus
   INT `0`/`1` may now both match a query. Duplicate rows remain independent
   alternatives during backtracking. Code that needs the actual type can use
@@ -100,8 +149,9 @@ Linux validates four variants with GCC 14 and Clang 18 consumers.
 
 The source repository records this candidate's completed checks and local log
 paths in `docs/VALIDATION_2_4_0.md`. Those logs are local build artifacts and are
-not shipped in the SDK. A previous 2.4.0 candidate from before the boolean changes
-must be replaced with this rebuilt package.
+not shipped in the SDK. A previous 2.4.0 candidate from before the allocator
+changes must be replaced with a rebuilt package. Existing archives in `dist/`
+are not updated by copying source files.
 
 Engine integration with the final candidate, review, tagging and publication
 remain maintainer release steps. Follow `docs/RELEASE_CHECKLIST.md` in the source

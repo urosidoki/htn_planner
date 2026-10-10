@@ -1,5 +1,9 @@
 # Documentation
 
+- [2.4.0 release notes and allocator migration](RELEASE_2_4_0.md)
+- [Per-instance list allocators and safe pools](INSTANCE_LIST_ALLOCATOR.md)
+- [Backtracking scratch allocators and usage statistics](BACKTRACKING_ALLOCATOR.md)
+
 - [Linux build, demos and SDK guide](LINUX.md)
 - [Linux validation record](LINUX_SMOKE.md)
 - [Domain language: tutorial and reference](DOMAIN_LANGUAGE.md)

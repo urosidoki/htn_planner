@@ -348,6 +348,12 @@ extern "C" int HTNAtom_CreateCall(HTNAtom* outAtom, const void* inHeadSymbol, co
 
 extern "C" int HTNAtom_CreateCallFromPointers(HTNAtom* outAtom, const void* inHeadSymbol, const HTNAtom* const* inArguments, const uint32_t inArgumentCount)
 {
+    return HTNAtom_CreateCallFromPointersWithAllocator(outAtom, inHeadSymbol, inArguments, inArgumentCount, nullptr);
+}
+
+extern "C" int HTNAtom_CreateCallFromPointersWithAllocator(HTNAtom* outAtom, const void* inHeadSymbol,
+    const HTNAtom* const* inArguments, const uint32_t inArgumentCount, void* inAllocator)
+{
     if (!outAtom)
         return 0;
 
@@ -358,6 +364,7 @@ extern "C" int HTNAtom_CreateCallFromPointers(HTNAtom* outAtom, const void* inHe
     HTNAtom Head;
     HTNAtom_Init(&Head);
     HTNAtom_SetSymbol(&Head, inHeadSymbol);
+    HTNAtom_SetEmptyListWithAllocator(outAtom, inAllocator);
     if (!HTNAtom_PushBackListElement(outAtom, &Head))
     {
         HTNAtom_Destroy(&Head);
@@ -369,7 +376,12 @@ extern "C" int HTNAtom_CreateCallFromPointers(HTNAtom* outAtom, const void* inHe
     for (uint32_t ArgumentIndex = 0u; ArgumentIndex < inArgumentCount; ++ArgumentIndex)
     {
         const HTNAtom* Argument = inArguments[ArgumentIndex];
-        if (!Argument || !HTNAtom_IsBound(Argument) || !HTNAtom_PushBackListElement(outAtom, Argument))
+        HTNAtom Copy;
+        HTNAtom_Init(&Copy);
+        const bool Valid = Argument && HTNAtom_IsBound(Argument) &&
+            HTNAtom_CopyWithAllocator(&Copy, Argument, inAllocator) && HTNAtom_PushBackListElementMove(outAtom, &Copy);
+        HTNAtom_Destroy(&Copy);
+        if (!Valid)
         {
             HTNAtom_Unbind(outAtom);
             return 0;
@@ -380,10 +392,15 @@ extern "C" int HTNAtom_CreateCallFromPointers(HTNAtom* outAtom, const void* inHe
 
 extern "C" void HTNAtom_SetEmptyList(HTNAtom* ioAtom)
 {
+    HTNAtom_SetEmptyListWithAllocator(ioAtom, nullptr);
+}
+
+extern "C" void HTNAtom_SetEmptyListWithAllocator(HTNAtom* ioAtom, void* inAllocator)
+{
     if (!ioAtom)
         return;
     DestroyAtomValue(*ioAtom);
-    HTNAtomList_Init(&ioAtom->value.list_value);
+    HTNAtomList_InitWithAllocator(&ioAtom->value.list_value, inAllocator);
     ioAtom->type = HTN_ATOM_TYPE_LIST;
 }
 
@@ -399,6 +416,39 @@ extern "C" int HTNAtom_Copy(HTNAtom* outAtom, const HTNAtom* inAtom)
         return 0;
     InitializeAtomStorage(*outAtom);
     return CopyAtomValue(*outAtom, *inAtom);
+}
+
+extern "C" int HTNAtom_CopyWithAllocator(HTNAtom* outAtom, const HTNAtom* inAtom, void* inAllocator)
+{
+    if (!inAllocator || !inAtom || inAtom->type != HTN_ATOM_TYPE_LIST)
+        return HTNAtom_Copy(outAtom, inAtom);
+    if (!outAtom)
+        return 0;
+    HTNAtom_Init(outAtom);
+    HTNAtom_SetEmptyListWithAllocator(outAtom, inAllocator);
+    for (const HTNAtomNode* Node = inAtom->value.list_value.head_node; Node; Node = Node->next_node)
+    {
+        HTNAtom Element;
+        const bool Valid = HTNAtom_CopyWithAllocator(&Element, &Node->data, inAllocator) &&
+            HTNAtom_PushBackListElementMove(outAtom, &Element);
+        HTNAtom_Destroy(&Element);
+        if (!Valid)
+        {
+            HTNAtom_Unbind(outAtom);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+extern "C" int HTNAtom_AssignCopyWithAllocator(HTNAtom* ioAtom, const HTNAtom* inAtom, void* inAllocator)
+{
+    if (!ioAtom || !inAtom)
+        return 0;
+    if (ioAtom == inAtom)
+        return 1;
+    HTNAtom_Destroy(ioAtom);
+    return HTNAtom_CopyWithAllocator(ioAtom, inAtom, inAllocator);
 }
 
 extern "C" void HTNAtom_Move(HTNAtom* outAtom, HTNAtom* inAtom)

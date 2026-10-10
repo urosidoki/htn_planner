@@ -35,6 +35,8 @@ HTNDecompositionStatus ExecuteGeneratedPlanner(const HTNGeneratedPlannerDefiniti
     HTNGeneratedPlannerContext GeneratedContext{};
     GeneratedContext.world_state = ExecutionContext.WorldState;
     GeneratedContext.client_context = ExecutionContext.ClientContext;
+    GeneratedContext.list_allocator = ExecutionContext.ListAllocator;
+    GeneratedContext.backtracking_allocator = ExecutionContext.BacktrackingAllocator;
     GeneratedContext.callterm_error_policy = ExecutionContext.CallTermErrorPolicy;
     GeneratedContext.callterm_error_callback = ExecutionContext.CallTermErrorCallback;
     GeneratedContext.callterm_binding_context = ExecutionContext.CallTermBindingContext;
