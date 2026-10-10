@@ -35,10 +35,13 @@ dist/HTNSDK-<version>-linux-x86_64.tar.gz
 dist/HTNSDK-<version>-linux-x86_64.tar.gz.sha256
 ```
 
-Existing versioned output is preserved by default. Use a new candidate identifier
-when iterating; never overwrite a published release. Build final packages with the
-final version instead of renaming candidate files. The manifests and provenance
-must agree with the archive filenames.
+Both build-and-validate commands replace this version's local package directory,
+archive and SHA-256 file by default. Windows passes `-Force` to the packager;
+Linux replaces its outputs after both consumer validations pass. Other versions
+are unchanged. Calling `PackageSDK.cmd` directly still requires `-Force`.
+These commands do not publish a release. Build final packages with the final
+version instead of renaming candidate files, so manifests, provenance and
+archive filenames agree.
 
 ## Package contents
 

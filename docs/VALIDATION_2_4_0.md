@@ -37,3 +37,14 @@ Logs and the per-file export manifest are local artifacts under
 - Review, commit, tag and publish using [the release checklist](RELEASE_CHECKLIST.md).
 
 No commit, tag, push or publication was performed by this export.
+
+## Packaging replacement defaults
+
+The build-and-validate commands now replace existing local outputs for the same
+version by default. Three filesystem regression tests passed under Ubuntu from
+both checkouts, covering repeated replacement/checksums, preservation of other
+versions and rejection of output paths/symlinks that could escape the destination.
+The Windows PowerShell script also passed syntax validation. Local logs:
+`build/logs/sdk-force-default/linux-tests.log` and
+`build/logs/sdk-force-default/windows-syntax.log`.
+No complete SDK rebuild was run for this script-only follow-up.

@@ -34,7 +34,7 @@ try {
     })
     @{version=$Version; build_id=[guid]::NewGuid().ToString('N'); rebuilt=$true; artifacts=$artifacts} |
         ConvertTo-Json -Depth 5 | Set-Content "$repo/build/sdk/build-receipt.json" -Encoding UTF8
-    & "$PSScriptRoot/PackageSDK.ps1" -Version $Version
+    & "$PSScriptRoot/PackageSDK.ps1" -Version $Version -Force
     $archive = "$repo/dist/HTNSDK-$Version-windows-x86_64.zip"
     $validation = Join-Path ([IO.Path]::GetTempPath()) ('htn-sdk-extracted-' + [guid]::NewGuid().ToString('N'))
     Expand-Archive -LiteralPath $archive -DestinationPath $validation

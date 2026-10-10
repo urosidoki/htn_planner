@@ -16,6 +16,21 @@ import uuid
 from ValidatePackageLinux import VARIANTS, FORBIDDEN_PATH, digest, require, run
 
 
+def replace_package(stage, staged_archive, destination, archive):
+    """Replace only this version's local outputs after archive validation succeeds."""
+    checksum = Path(str(archive) + ".sha256")
+    dist = destination.parent.resolve()
+    for output in (destination, archive, checksum):
+        require(not output.is_symlink() and output.resolve().parent == dist,
+                f"Package output must be a direct path inside dist: {output}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.move(stage, destination)
+    os.replace(staged_archive, archive)
+    checksum.write_text(f"{digest(archive)}  {archive.name}\n")
+
+
 def main():
     root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
@@ -31,8 +46,6 @@ def main():
         require(shutil.which(tool), f"Missing tool: {tool}; see docs/LINUX.md")
     name = f"HTNSDK-{args.version}-linux-x86_64"
     destination, archive = root / "dist" / name, root / "dist" / f"{name}.tar.gz"
-    require(not any(p.exists() for p in (destination, archive, Path(str(archive) + ".sha256"))),
-            "Package already exists; use a new candidate version or explicitly move the old local candidate")
     build_id = uuid.uuid4().hex
     work = root / "build" / "sdk-linux" / build_id
     work.mkdir(parents=True)
@@ -149,10 +162,7 @@ def main():
             logs.mkdir(parents=True, exist_ok=True)
             for log in consumer_build.glob("*.log"):
                 shutil.copy2(log, logs / log.name)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(stage, destination)
-    shutil.move(staged_archive, archive)
-    Path(str(archive) + ".sha256").write_text(f"{digest(archive)}  {archive.name}\n")
+    replace_package(stage, staged_archive, destination, archive)
     print(f"PASS: Linux SDK archive and SHA-256: {archive}\nBuild logs: {work}\nExternal consumers and logs: {external}", flush=True)
 
 

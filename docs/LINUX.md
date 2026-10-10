@@ -142,9 +142,10 @@ dist/HTNSDK-<version>-linux-x86_64.tar.gz
 dist/HTNSDK-<version>-linux-x86_64.tar.gz.sha256
 ```
 
-An existing candidate is never replaced implicitly. Choose a different candidate
-version or explicitly move your previous local outputs. Do not replace a published
-release. Build/package logs are in `build/sdk-linux/<build-id>/`, including copies
+Running the command again replaces this version's local directory, tarball and
+SHA-256 file automatically, after both consumer validations pass. Other versions
+are unchanged; the command does not publish a release. Build/package logs are in
+`build/sdk-linux/<build-id>/`, including copies
 of the detailed consumer logs under `external/`; the final output also prints the
 temporary external consumer directory. All paths are printed
 on failure so a terminal window closing does not lose the evidence.
