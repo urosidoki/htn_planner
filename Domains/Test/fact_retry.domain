@@ -1,0 +1,51 @@
+// Copyright (c) 2026 Jose Antonio Escribano joseantonioescribanoayllon@gmail.com
+
+(:domain fact_retry top_level_domain
+    (:axiom (most_important_event ?out_type ?out_event_id ?out_timestamp)
+        (and
+            (event ?out_type ?out_event_id ?out_timestamp)
+            (not
+                (and
+                    (event ?other_type ?other_event_id ?other_timestamp)
+                    (> ?other_timestamp ?out_timestamp)
+                )
+            )
+        )
+    )
+
+    (:method (select_event) top_level_method
+        (branch
+            (and (#most_important_event ?type ?event_id ?timestamp))
+            ((!selected ?event_id))
+        )
+    )
+
+    (:method (filtered ?inp_type ?inp_minimum) top_level_method
+        (branch
+            (and (event ?inp_type ?id ?timestamp) (> ?timestamp ?inp_minimum))
+            ((!selected ?id))
+        )
+    )
+
+    (:method (pairs) top_level_method
+        (branch
+            (and (pair ?left ?right) (pair ?right ?left) (accepted ?left))
+            ((!selected ?left ?right))
+        )
+    )
+
+    (:method (append_during_retry) top_level_method
+        (branch
+            (and (event ?type ?id ?timestamp) (call append_and_accept ?id))
+            ((!selected ?id))
+        )
+    )
+
+    (:method (exhaust) top_level_method
+        (branch
+            (and (event ?type ?id ?timestamp) (never ?id))
+            ((!unexpected))
+        )
+        (fallback () ((!fallback)))
+    )
+)

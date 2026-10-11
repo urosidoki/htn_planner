@@ -880,18 +880,21 @@ void EmitGeneratedFactChoiceHelper(CodeWriter& W, const HTNCompilerIR& B,
     if (Condition.Kind != HTN_CONDITION_FACT) { B.SetError("Attempted to emit a fact choice helper for a non-fact condition"); return; }
 
     W.Out << "static int " << GetGeneratedFactChoiceHelperName(inDomainSymbol, inConditionIndex)
-          << "(const HTNGeneratedPlannerContext* context, uint32_t target_solution)\n{\n";
+          << "(const HTNGeneratedPlannerContext* context, uint64_t* next_row)\n{\n";
     W.Out << "    HTNGeneratedFactRowCursor fact_cursor;\n";
     if (Condition.ArgumentCount > 0u)
         W.Out << "    const HTNAtom* fact_arguments[" << Condition.ArgumentCount << "u];\n";
-    W.Out << "    uint32_t solution_index = 0u;\n";
     W.Profile << "    HTN_GENERATED_STRUCTURAL_EVENT(context, HTN_GENERATED_STRUCTURAL_FACT_QUERY);\n";
-    W.Profile << "    HTN_GENERATED_STRUCTURAL_EVENT(context, target_solution == 0u ? HTN_GENERATED_STRUCTURAL_FACT_CHOICE_POINT : HTN_GENERATED_STRUCTURAL_FACT_CHOICE_RETRY);\n";
+    W.Profile << "    HTN_GENERATED_STRUCTURAL_EVENT(context, *next_row == 0u ? HTN_GENERATED_STRUCTURAL_FACT_CHOICE_POINT : HTN_GENERATED_STRUCTURAL_FACT_CHOICE_RETRY);\n";
     W.Profile << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_CONDITION_FACT_CURSOR_SETUP);\n";
     W.Profile << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_FACT);\n";
     W.Profile << "    HTN_GENERATED_PROFILE_BEGIN(context, HTN_GENERATED_PROFILE_WORLDSTATE_COUNT);\n";
     if (Condition.ResolvedIndex == kNoIndex) { B.SetError("Generated fact choice has no compile-time fact slot"); return; }
     W.Out << "    " << BuildGeneratedFactCursorBegin(B, Condition, "fact_cursor") << ";\n";
+    // Keep only the row offset across continuations. Reopening the table observes
+    // rows appended by callterms, without retaining row pointers across reallocations.
+    // Removal/reordering during decomposition is forbidden by the world-state contract.
+    W.Out << "    fact_cursor.next = *next_row;\n";
     W.Profile << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_WORLDSTATE_COUNT);\n";
     W.Profile << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_FACT);\n";
     W.Profile << "    HTN_GENERATED_PROFILE_END(context, HTN_GENERATED_PROFILE_CONDITION_FACT_CURSOR_SETUP);\n";
@@ -934,7 +937,7 @@ void EmitGeneratedFactChoiceHelper(CodeWriter& W, const HTNCompilerIR& B,
     }
 
     W.Profile << "        HTN_GENERATED_STRUCTURAL_EVENT(context, HTN_GENERATED_STRUCTURAL_FACT_ROW_MATCHED);\n";
-    W.Out << "        if (solution_index++ != target_solution) continue;\n";
+    W.Out << "        *next_row = fact_cursor.next;\n";
     for (const auto& Pair : FirstVariableArgument)
     {
         const uint32 Argument = Pair.second;

@@ -100,3 +100,35 @@ without linking its planner execution to ImGui.
 The debugger observes generated execution through the generated runtime bridge. It
 does not evaluate conditions, choose branches or affect backtracking. Disabling the
 debugger removes captured state but does not change planning results.
+
+## Capture cost and diagnostics
+
+Capture retains every visible attempt, including unsuccessful retries, skipped
+conditions and the before/after bindings. Pending-condition lookup examines the
+metadata placeholders rather than repeatedly scanning completed attempts.
+Condition titles are tokenized once per decomposition and copied into owning
+nodes; variable snapshots reserve only the bindings they actually contain.
+Snapshots still own their strings/atoms and remain usable after reset or module
+unloading. There is no automatic history truncation.
+
+Build with the existing `--generated-execution-profiling` Premake option to enable
+optional debugger performance counters (no `HTN_PROFILE_DETAILED` required):
+
+```cpp
+debugger.SetPerformanceCountersEnabled(true);
+// Reset the debugger and execute a decomposition as usual.
+const auto& counters = debugger.GetPerformanceCounters();
+```
+
+Counters report event/capture/search nanoseconds, nodes created, pending children
+examined, capture calls, variable slots examined and copied atom/list values.
+List counts refer to top-level captured list values, not their individual nodes.
+Capture and search times are included in event time. The timers themselves have
+overhead: use a separate diagnostic pass, not representative latency samples.
+`Reset()` clears counters. A disabled debugger performs no captures or node
+allocations even when performance counters are enabled.
+
+For the opt-in 16–1024 event benchmark and a separately measured deep snapshot
+copy, see [HTNBenchmark](../HTNBenchmark/README.md#fact-retries-and-generated-debugger-opt-in)
+and the [fact retry performance report](FACT_RETRY_PERFORMANCE.md). Complete
+histories of large nested searches still consume significant time and memory.

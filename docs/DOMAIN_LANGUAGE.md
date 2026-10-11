@@ -187,6 +187,13 @@ fact rows remain valid while enumerating alternatives. World-state changes or
 external side effects made by callterms are not automatically undone by
 backtracking. The host owns synchronization and the lifetime of the world state.
 
+Generated fact queries enumerate rows in insertion order. Each query invocation
+keeps its own next-row position across retries; nested queries and fresh axiom
+invocations start independently. On a retry, the table size is refreshed, so rows
+appended by a callterm remain visible. Do not remove, replace or reorder rows (or
+change the world's fact registry) during decomposition. Appends are not rolled
+back when a later condition fails.
+
 ## Methods, branches and tasks
 
 A method signature contains its name and zero or more **input** parameters, all

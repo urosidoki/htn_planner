@@ -10,17 +10,53 @@
 #include "Translator/HTNGeneratedDebug.h"
 
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cstdint>
 #include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+#include <chrono>
+#endif
 
 // Standalone event-based debugger for generated HTN execution.
 // Deliberately depends only on generated metadata and generated event snapshots.
 class HTNGeneratedDebugger
 {
 public:
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+    // Opt-in diagnostics, measured in a separate pass from benchmark wall time.
+    struct PerformanceCounters
+    {
+        std::uint64_t EventNanoseconds = 0u, CaptureNanoseconds = 0u, SearchNanoseconds = 0u;
+        std::uint64_t NodesCreated = 0u, ChildrenExamined = 0u, Captures = 0u;
+        std::uint64_t SlotsExamined = 0u, AtomsCopied = 0u, ListsCopied = 0u;
+    };
+    void SetPerformanceCountersEnabled(bool inEnabled) { mMeasurePerformance = inEnabled; }
+    const PerformanceCounters& GetPerformanceCounters() const { return mPerformance; }
+
+    class PerformanceScope
+    {
+    public:
+        explicit PerformanceScope(std::uint64_t* inNanoseconds) : mNanoseconds(inNanoseconds)
+        {
+            if (mNanoseconds) mStart = std::chrono::steady_clock::now();
+        }
+        explicit PerformanceScope(HTNGeneratedDebugger* inDebugger)
+            : PerformanceScope(inDebugger && inDebugger->mEnabled && inDebugger->mMeasurePerformance
+                ? &inDebugger->mPerformance.EventNanoseconds : nullptr) {}
+        ~PerformanceScope()
+        {
+            if (mNanoseconds) *mNanoseconds += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - mStart).count());
+        }
+    private:
+        std::uint64_t* mNanoseconds;
+        std::chrono::steady_clock::time_point mStart;
+    };
+#endif
     enum class NodeKind : std::uint8_t
     {
         Plan,
@@ -111,9 +147,14 @@ public:
     {
         mDomainPath = inDomainPath ? inDomainPath : std::string();
         mNodes.clear();
+        mPendingConditionChildren.clear();
+        mConditionPresentations.clear();
         mOpenNodes.clear();
         mConditionVisibility.clear();
         mPendingTasks.clear();
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+        mPerformance = {};
+#endif
         ++mRevision;
     }
 
@@ -130,6 +171,10 @@ public:
     {
         mIndependentLists = inIndependentLists;
         if (!mEnabled || !inDomain || !inDomain->debug_metadata || inMethodIndex >= inDomain->debug_metadata->method_count) return;
+        // Cache only within a decomposition: a reloaded module can reuse an
+        // address, and retained snapshots must own their presentation strings.
+        mConditionPresentations.clear();
+        mConditionPresentations.resize(inDomain->debug_metadata->condition_count);
         const HTNGeneratedDebugMethod& DebugMethod = inDomain->debug_metadata->methods[inMethodIndex];
         BeginNode(NodeKind::Plan, inMethodIndex, DebugMethod.source_line, ResolveString(inDomain, DebugMethod.id, "plan"));
         mNodes.back().DisplayName = "(" + mNodes.back().DisplayName + ")";
@@ -239,9 +284,8 @@ public:
                 : ResolveString(inDomain, Condition.id, ConditionName(Condition.kind));
             BeginNode(ConditionKind(Condition.kind), inConditionIndex, Condition.source_line, DisplayName);
             Node& RuntimeNode = mNodes.back();
-            ApplySourceLocation(RuntimeNode, inDomain, inDomain->debug_metadata->condition_sources, inConditionIndex, inDomain->debug_metadata->condition_count);
             RuntimeNode.Started = true;
-            BuildConditionTitleTokens(inDomain, Condition, RuntimeNode);
+            ApplyConditionPresentation(inDomain, inConditionIndex, RuntimeNode);
             if (Condition.kind == HTN_CONDITION_NOT)
             {
                 if (RuntimeNode.ScopeVariableMask.empty())
@@ -531,13 +575,46 @@ private:
         }
     }
 
-    std::uint32_t FindPendingConditionChild(const std::uint32_t inParentEventNodeId, const std::uint32_t inConditionIndex) const
+    void ApplyConditionPresentation(const HTNGeneratedPlannerDefinition* inDomain,
+                                    const std::uint32_t inConditionIndex, Node& ioNode)
     {
+        if (mConditionPresentations.size() != inDomain->debug_metadata->condition_count)
+            mConditionPresentations.resize(inDomain->debug_metadata->condition_count);
+        Node& Presentation = mConditionPresentations[inConditionIndex];
+        if (Presentation.MetadataIndex == HTN_GENERATED_NO_INDEX)
+        {
+            Presentation.MetadataIndex = inConditionIndex;
+            Presentation.Source = ioNode.Source;
+            ApplySourceLocation(Presentation, inDomain, inDomain->debug_metadata->condition_sources,
+                                inConditionIndex, inDomain->debug_metadata->condition_count);
+            BuildConditionTitleTokens(inDomain, inDomain->debug_metadata->conditions[inConditionIndex], Presentation);
+        }
+        ioNode.Source = Presentation.Source;
+        ioNode.DisplayName = Presentation.DisplayName;
+        ioNode.TitleTokens = Presentation.TitleTokens;
+        ioNode.Constants = Presentation.Constants;
+    }
+
+    std::uint32_t FindPendingConditionChild(const std::uint32_t inParentEventNodeId, const std::uint32_t inConditionIndex)
+    {
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+        PerformanceScope Timing(mMeasurePerformance ? &mPerformance.SearchNanoseconds : nullptr);
+#endif
         if (inParentEventNodeId == HTN_GENERATED_NO_INDEX || inParentEventNodeId >= mNodes.size())
             return HTN_GENERATED_NO_INDEX;
 
-        for (const std::uint32_t ChildId : mNodes[inParentEventNodeId].Children)
+        // Metadata placeholders are a fixed prefix. Runtime retries append nodes
+        // after that prefix and can never be pending. Do not rescan the history.
+        auto& Pending = mPendingConditionChildren[inParentEventNodeId];
+        const auto& Children = mNodes[inParentEventNodeId].Children;
+        while (Pending.Next < Pending.End && mNodes[Children[Pending.Next]].Started)
+            ++Pending.Next;
+        for (auto I = Pending.Next; I < Pending.End; ++I)
         {
+            const std::uint32_t ChildId = Children[I];
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+            if (mMeasurePerformance) ++mPerformance.ChildrenExamined;
+#endif
             if (ChildId >= mNodes.size())
                 continue;
             const Node& Child = mNodes[ChildId];
@@ -578,6 +655,9 @@ private:
         const HTNGeneratedDebugCondition& Condition = inDomain->debug_metadata->conditions[inConditionIndex];
         if (Condition.is_internal) return HTN_GENERATED_NO_INDEX;
         Node NewNode;
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+        if (mMeasurePerformance) ++mPerformance.NodesCreated;
+#endif
         NewNode.EventNodeId = static_cast<std::uint32_t>(mNodes.size());
         NewNode.MetadataIndex = inConditionIndex;
         NewNode.ParentEventNodeId = inParentEventNodeId;
@@ -586,16 +666,14 @@ private:
         NewNode.Source.DomainPath = mDomainPath;
         NewNode.Source.Line = Condition.source_line;
         NewNode.Source.EndLine = Condition.source_line;
-        ApplySourceLocation(NewNode, inDomain, inDomain->debug_metadata->condition_sources, inConditionIndex, inDomain->debug_metadata->condition_count);
-        NewNode.DisplayName = Condition.kind == HTN_CONDITION_BUILTIN_COMPARISON
-            ? BuiltinComparisonName(Condition.id)
-            : ResolveString(inDomain, Condition.id, ConditionName(Condition.kind));
-        BuildConditionTitleTokens(inDomain, Condition, NewNode);
+        ApplyConditionPresentation(inDomain, inConditionIndex, NewNode);
 
         if (inParentEventNodeId != HTN_GENERATED_NO_INDEX && inParentEventNodeId < mNodes.size())
         {
             NewNode.ScopeVariableMask = mNodes[inParentEventNodeId].ScopeVariableMask;
             mNodes[inParentEventNodeId].Children.push_back(NewNode.EventNodeId);
+            mPendingConditionChildren[inParentEventNodeId].End =
+                static_cast<std::uint32_t>(mNodes[inParentEventNodeId].Children.size());
         }
 
         if (Condition.kind == HTN_CONDITION_NOT)
@@ -606,6 +684,7 @@ private:
         }
 
         mNodes.push_back(std::move(NewNode));
+        mPendingConditionChildren.emplace_back();
         const std::uint32_t NewNodeId = static_cast<std::uint32_t>(mNodes.size() - 1u);
         CreateConditionMetadataChildren(inDomain, NewNodeId, Condition);
         return NewNodeId;
@@ -630,6 +709,9 @@ private:
 
     void BeginNode(const NodeKind inKind, const std::uint32_t inMetadataIndex, const std::uint32_t inLine, const char* inName, const std::uint32_t inParentOverride = HTN_GENERATED_NO_INDEX)
     {
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+        if (mMeasurePerformance) ++mPerformance.NodesCreated;
+#endif
         Node NewNode;
         NewNode.EventNodeId = static_cast<std::uint32_t>(mNodes.size());
         NewNode.MetadataIndex = inMetadataIndex;
@@ -648,6 +730,7 @@ private:
         }
 
         mNodes.push_back(std::move(NewNode));
+        mPendingConditionChildren.emplace_back();
         mOpenNodes.push_back(static_cast<std::uint32_t>(mNodes.size() - 1u));
     }
 
@@ -753,26 +836,50 @@ private:
         if (!mEnabled || mOpenNodes.empty() || !inDomain || !inDomain->debug_metadata || !inValues || !inBoundMask || !inDomain->debug_metadata->variable_string_ids)
             return;
 
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+        PerformanceScope Timing(mMeasurePerformance ? &mPerformance.CaptureNanoseconds : nullptr);
+        if (mMeasurePerformance) ++mPerformance.Captures;
+#endif
+
         Node& Current = mNodes[mOpenNodes.back()];
         std::vector<Node::VariableValue>& Out = inBefore ? Current.VariablesBefore : Current.VariablesAfter;
         Out.clear();
-        const std::uint32_t SlotCount = std::min(inSlotCount, inDomain->debug_metadata->variable_slot_count);
-        Out.reserve(SlotCount);
-        for (std::uint32_t Slot = 0u; Slot < SlotCount; ++Slot)
+        const std::uint32_t SlotCount = std::min({inSlotCount, inDomain->debug_metadata->variable_slot_count,
+                                                HTN_GENERATED_MAX_VARIABLE_SLOTS});
+        // Reserve only the bindings actually captured, not the domain's complete
+        // variable capacity twice for every event. Iterate bound/scope bits in
+        // slot order so the observable snapshots remain identical.
+        std::array<std::uint32_t, HTN_GENERATED_MAX_VARIABLE_SLOTS> Slots;
+        std::uint32_t Count = 0u;
+        for (std::uint32_t Word = 0u; Word < (SlotCount + 63u) / 64u; ++Word)
         {
-            if (inDomain->debug_metadata->variable_string_ids[Slot] == HTN_GENERATED_NO_INDEX)
-                continue;
-            const std::uint64_t Mask = std::uint64_t{1} << (Slot & 63u);
-            if ((inBoundMask[Slot >> 6u] & Mask) == 0u)
-                continue;
+            std::uint64_t Mask = inBoundMask[Word];
             if (!Current.ScopeVariableMask.empty())
+                Mask &= Word < Current.ScopeVariableMask.size() ? Current.ScopeVariableMask[Word] : 0u;
+            while (Mask)
             {
-                const std::uint32_t Word = Slot >> 6u;
-                if (Word >= Current.ScopeVariableMask.size() || (Current.ScopeVariableMask[Word] & Mask) == 0u)
-                    continue;
+                const std::uint32_t Slot = Word * 64u + std::countr_zero(Mask);
+                Mask &= Mask - 1u;
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+                if (mMeasurePerformance) ++mPerformance.SlotsExamined;
+#endif
+                if (Slot < SlotCount && inDomain->debug_metadata->variable_string_ids[Slot] != HTN_GENERATED_NO_INDEX)
+                    Slots[Count++] = Slot;
             }
+        }
+        Out.reserve(Count);
+        for (std::uint32_t I = 0; I < Count; ++I)
+        {
+            const std::uint32_t Slot = Slots[I];
 
             Node::VariableValue Variable;
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+            if (mMeasurePerformance)
+            {
+                ++mPerformance.AtomsCopied;
+                if (inValues[Slot].type == HTN_ATOM_TYPE_LIST) ++mPerformance.ListsCopied;
+            }
+#endif
             Variable.Slot = Slot;
             Variable.Name = ResolveString(inDomain, inDomain->debug_metadata->variable_string_ids[Slot], "?");
             // Debug history outlives decomposition and must not consume a bounded
@@ -797,11 +904,18 @@ private:
     }
 
     struct PendingTask { std::uint32_t MetadataIndex = HTN_GENERATED_NO_INDEX; std::uint32_t ParentEventNodeId = HTN_GENERATED_NO_INDEX; };
+    struct PendingConditionChildren { std::uint32_t Next = 0u, End = 0u; };
 
     bool mEnabled = false;
+#ifdef HTN_GENERATED_EXECUTION_PROFILING
+    bool mMeasurePerformance = false;
+    mutable PerformanceCounters mPerformance;
+#endif
     bool mIndependentLists = false;
     std::string mDomainPath;
     std::vector<Node> mNodes;
+    std::vector<PendingConditionChildren> mPendingConditionChildren;
+    std::vector<Node> mConditionPresentations;
     std::vector<std::uint32_t> mOpenNodes;
     // Hidden conditions still emit balanced events. Keep their nesting separate
     // from visible method/axiom/task nodes so their End event cannot close a parent.

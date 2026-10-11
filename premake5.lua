@@ -549,6 +549,8 @@ project "HTNBenchmark"
             "%{prj.name}/src/**.h",
             MakeHTNGeneratedSourceFiles("%{prj.name}/generated") }
 
+    files { "HTNBenchmark/src/**.inl" }
+
     includedirs { "HTNIntegration/src", "%{prj.name}/src", "HTNFramework/src" }
 
     links { "HTNIntegration", "HTNFramework" }
@@ -570,6 +572,7 @@ group "Tests"
             "%{prj.name}/src/**.h",
             MakeHTNGeneratedSourceFiles("%{prj.name}/generated"),
             windows and {
+                "%{prj.name}/generated/fact_retry_fixed/fact_retry.generated.c",
                 "%{prj.name}/generated/backtracking_policy_overflow/backtracking_policy.generated.c",
                 "%{prj.name}/generated/backtracking_policy_fixed_small/backtracking_policy.generated.c",
                 "%{prj.name}/generated/backtracking_policy_fixed_enough/backtracking_policy.generated.c",
@@ -599,6 +602,8 @@ group "Tests"
             MakeHTNEntryPoint(domain):gsub("HTN$", "NoneHTN"), "--instrumentation=none")
     end
     local runtimeSupport = _OPTIONS["runtime-backtracking-support"] == "enabled" and " --runtime-backtracking-support=enabled" or ""
+    GenerateHTNDomain("Domains/Test/fact_retry.domain", "HTNTest/generated/fact_retry_fixed",
+        "CreateFactRetryFixedHTN", "--backtracking-policy=fixed-capacity --backtracking-capacity=32" .. runtimeSupport)
     GenerateHTNDomain("Domains/Test/instance_allocator.domain", "HTNTest/generated/instance_allocator_overflow",
         "CreateInstanceAllocatorOverflowHTN", "--backtracking-policy=fixed-with-overflow --backtracking-capacity=2 --runtime-backtracking-support=enabled")
     GenerateHTNDomain("Domains/Test/backtracking_policy.domain", "HTNTest/generated/backtracking_policy_overflow",

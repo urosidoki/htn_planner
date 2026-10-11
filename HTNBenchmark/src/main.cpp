@@ -10,6 +10,7 @@
 #include "WorldState/HTNGeneratedWorldState.h"
 #include "Translator/HTNGeneratedPlanner.h"
 #include "Translator/HTNGeneratedProfiling.h"
+#include "Translator/HTNGeneratedDebugger.h"
 #include "Translator/HTNAllocationTrace.h"
 
 #include <algorithm>
@@ -26,6 +27,7 @@
 #include <limits>
 #include <new>
 #include <optional>
+#include <random>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -1208,8 +1210,13 @@ void RunThreadScaling(
 }
 }
 
+#include "FactRetryBenchmark.inl"
+
 int main(int argc, char** argv)
 {
+    if (argc > 1 && std::string(argv[1]) == "--fact-retries")
+        return RunFactRetryBenchmark(argc > 2 ? std::max(3, std::atoi(argv[2])) : 7,
+                                     argc > 3 ? std::atoi(argv[3]) : 256);
     if (argc > 1 && std::string(argv[1]) == "--allocation-self-test")
     {
 #ifdef HTN_BENCHMARK_ALLOCATIONS

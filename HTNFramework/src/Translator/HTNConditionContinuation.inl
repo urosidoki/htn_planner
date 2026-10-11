@@ -193,11 +193,13 @@ void EmitConditionContinuation(CodeWriter& W, const HTNCompilerIR& B, const uint
     {
         const uint32 Retry = W.NewLabel();
         const uint32 Next = W.NewLabel();
-        W.Out << "    uint32_t fact_choice_cursor_" << Retry << " = 0u;\n" << W.Label(Next) << ":;\n";
+        // A local per invocation, outside the retry label: nested queries and
+        // repeated axiom invocations never share their enumeration position.
+        W.Out << "    uint64_t fact_choice_cursor_" << Retry << " = 0u;\n" << W.Label(Next) << ":;\n";
         W.Debug << "    HTN_GENERATED_EVENT_DEBUG_BEGIN_CONDITION(context, &" << inDomainSymbol
               << "_PLANNER_DEFINITION, " << inCondition << "u, 1);\n";
         W.Out << "    if (!" << GetGeneratedFactChoiceHelperName(inDomainSymbol, inCondition)
-              << "(context, fact_choice_cursor_" << Retry << "++)) {\n";
+              << "(context, &fact_choice_cursor_" << Retry << ")) {\n";
         W.Debug << "    HTN_GENERATED_EVENT_DEBUG_END_CONDITION(context, &" << inDomainSymbol
               << "_PLANNER_DEFINITION, " << inCondition << "u, 0, 1);\n";
         W.Out << "    goto " << W.Label(Failure) << ";\n    }\n";
